@@ -1,0 +1,25 @@
+#!/usr/bin/env bpftrace
+
+/*
+ * bpftrace script to gather the following data on all (userspace) page faults:
+ *      
+*/
+
+BEGIN
+{
+    printf("Tracing userspace page faults... Hit Ctrl-C to end.\n");
+}
+
+tracepoint:exceptions:page_fault_user
+{
+    // format:
+    //    field:unsigned short common_type;       offset:0;       size:2; signed:0;
+    //    field:unsigned char common_flags;       offset:2;       size:1; signed:0;
+    //    field:unsigned char common_preempt_count;       offset:3;       size:1; signed:0;
+    //    field:int common_pid;   offset:4;       size:4; signed:1;
+    //      =======================================================
+    //    field:unsigned long address;    offset:8;       size:8; signed:0;
+    //    field:unsigned long ip; offset:16;      size:8; signed:0;
+    //    field:unsigned long error_code; offset:24;      size:8; signed:0;
+    @pfaults[comm] = count()
+}
