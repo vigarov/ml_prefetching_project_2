@@ -5,21 +5,32 @@
  *      
 */
 
+#include <asm/ptrace.h>
+
 BEGIN
 {
-    printf("Tracing userspace page faults... Hit Ctrl-C to end.\n");
+    printf("[BPFTRACE] Tracing userspace page faults for %s...\nStarting JSON\n{\n",str($1));
 }
 
-tracepoint:exceptions:page_fault_user
+/*  
+* Available arguments:
+     *  struct vm_area_struct * vma
+     *  long unsigned int address
+     *  unsigned int flags
+     *  struct pt_regs * regs
+     *  vm_fault_t retval
+*/
+
+kfunc:vmlinux:handle_mm_fault
+/comm==str($1)/ 
 {
-    // format:
-    //    field:unsigned short common_type;       offset:0;       size:2; signed:0;
-    //    field:unsigned char common_flags;       offset:2;       size:1; signed:0;
-    //    field:unsigned char common_preempt_count;       offset:3;       size:1; signed:0;
-    //    field:int common_pid;   offset:4;       size:4; signed:1;
-    //      =======================================================
-    //    field:unsigned long address;    offset:8;       size:8; signed:0;
-    //    field:unsigned long ip; offset:16;      size:8; signed:0;
-    //    field:unsigned long error_code; offset:24;      size:8; signed:0;
-    @pfaults[comm] = count()
+    $regs = ((struct pt_regs *) args.regs); 
+    printf("\t{\"address\": 0x%lx, \"flags\": %u, \"ip\": 0x%lx, \"ustack\": \"%s\", \"regs\": [%lu, %lu, %lu, %lu, %lu, %lu, %lu, %lu, %lu, %lu, %lu, %lu, %lu, %lu, %lu, %lu, %lu, %lu, %lu, %lu]},\n",
+        args.address, args.flags, $regs->ip, ustack, $regs->r15, $regs->r14, $regs->r13, $regs->r12, $regs->bp, $regs->bx, $regs->r11, $regs->r10, $regs->r9, $regs->r8, $regs->ax, $regs->cx, $regs->dx, $regs->si, $regs->di, $regs->orig_ax, $regs->cs, $regs->flags, $regs->sp, $regs->ss);
+    @total_pfaults[comm] = count();
+}
+
+END
+{
+    printf("}\n[BPFTRACE] Finished, exiting\n");
 }
