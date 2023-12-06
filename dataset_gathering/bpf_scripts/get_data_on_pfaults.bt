@@ -25,9 +25,17 @@ kfunc:vmlinux:handle_mm_fault
 /comm==str($1)/ 
 {
     $regs = ((struct pt_regs *) args.regs); 
-    printf("\t{\"address\": 0x%lx, \"flags\": %u, \"ip\": 0x%lx, \"ustack\": \"%s\", \"regs\": [%lu, %lu, %lu, %lu, %lu, %lu, %lu, %lu, %lu, %lu, %lu, %lu, %lu, %lu, %lu, %lu, %lu, %lu, %lu, %lu]},\n",
-        args.address, args.flags, $regs->ip, ustack, $regs->r15, $regs->r14, $regs->r13, $regs->r12, $regs->bp, $regs->bx, $regs->r11, $regs->r10, $regs->r9, $regs->r8, $regs->ax, $regs->cx, $regs->dx, $regs->si, $regs->di, $regs->orig_ax, $regs->cs, $regs->flags, $regs->sp, $regs->ss);
+    printf("\t{\"tid\":%d,\"address\": 0x%lx, \"flags\": %u, \"ip\": 0x%lx, \"ustack\": \"%s\", \"regs\": [%lu, %lu, %lu, %lu, %lu, %lu, %lu, %lu, %lu, %lu, %lu, %lu, %lu, %lu, %lu, %lu, %lu, %lu, %lu, %lu]},\n",
+        tid,args.address, args.flags, $regs->ip, ustack, $regs->r15, $regs->r14, $regs->r13, $regs->r12, $regs->bp, $regs->bx, $regs->r11, $regs->r10, $regs->r9, $regs->r8, $regs->ax, $regs->cx, $regs->dx, $regs->si, $regs->di, $regs->orig_ax, $regs->cs, $regs->flags, $regs->sp, $regs->ss);
+    @existance_map[tid] = 1;
     @total_pfaults[comm] = count();
+}
+
+kretprobe:handle_mm_fault
+/comm==str($1) && @existance_map[tid]/ 
+{
+    printf("\t\t{\"tid\": %d, \"retval\": 0x%lx},\n", tid,retval);
+    delete(@existance_map[tid]);
 }
 
 END
