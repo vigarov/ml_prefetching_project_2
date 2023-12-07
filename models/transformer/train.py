@@ -95,7 +95,7 @@ def run_validation(model, validation_ds, tokenizer_src, tokenizer_tgt, max_len, 
             print_msg('-'*console_width)
             print_msg(f"{f'SOURCE: ':>12}{source_text}")
             print_msg(f"{f'TARGET: ':>12}{target_text}")
-            print_msg(f"{f'PREDIC: ':>12}{model_out_text}")
+            print_msg(f"{f'PREDICT:  ':>12}{model_out_text}")
 
             if count == num_examples:
                 print_msg('-'*console_width)
@@ -119,6 +119,14 @@ def run_validation(model, validation_ds, tokenizer_src, tokenizer_tgt, max_len, 
         metric = torchmetrics.BLEUScore()
         bleu = metric(predicted, expected)
         writer.add_scalar('validation BLEU', bleu, global_step)
+        writer.flush()
+
+        # Compute the BLEU metric
+        new_pred = [set(a.split(" ")) for a in predicted]
+        new_expected = [set(a.split(" ")) for a in expected]
+        acc = [len(a.intersection(b))/len(a) for a,b in zip(new_pred, new_expected)]
+        acc = sum(acc) / len(acc)
+        writer.add_scalar('validation accuracy', acc, global_step)
         writer.flush()
 
 def get_all_sentences(ds, lang):
