@@ -7,7 +7,7 @@ import torch
 import torch.nn as nn
 from torch.utils.data import Dataset, DataLoader, random_split
 from torch.optim.lr_scheduler import LambdaLR
-
+from data_parser import *
 import warnings
 from tqdm import tqdm
 import os
@@ -95,7 +95,7 @@ def run_validation(model, validation_ds, tokenizer_src, tokenizer_tgt, max_len, 
             print_msg('-'*console_width)
             print_msg(f"{f'SOURCE: ':>12}{source_text}")
             print_msg(f"{f'TARGET: ':>12}{target_text}")
-            print_msg(f"{f'PREDICTED: ':>12}{model_out_text}")
+            print_msg(f"{f'PREDIC: ':>12}{model_out_text}")
 
             if count == num_examples:
                 print_msg('-'*console_width)
@@ -123,7 +123,7 @@ def run_validation(model, validation_ds, tokenizer_src, tokenizer_tgt, max_len, 
 
 def get_all_sentences(ds, lang):
     for item in ds:
-        yield item['translation'][lang]
+        yield item[lang]
 
 def get_or_build_tokenizer(config, ds, lang):
     tokenizer_path = Path(config['tokenizer_file'].format(lang))
@@ -140,7 +140,7 @@ def get_or_build_tokenizer(config, ds, lang):
 
 def get_ds(config):
     # It only has the train split, so we divide it overselves
-    ds_raw = load_dataset(f"{config['datasource']}", f"{config['lang_src']}-{config['lang_tgt']}", split='train')
+    ds_raw = label(load_json('/home/alex/ml_prefetching/dataset_gathering/correct_out_3.txt'), 10, 10) #load_dataset(f"{config['datasource']}", f"{config['lang_src']}-{config['lang_tgt']}", split='train')
 
     # Build tokenizers
     tokenizer_src = get_or_build_tokenizer(config, ds_raw, config['lang_src'])
@@ -159,8 +159,8 @@ def get_ds(config):
     max_len_tgt = 0
 
     for item in ds_raw:
-        src_ids = tokenizer_src.encode(item['translation'][config['lang_src']]).ids
-        tgt_ids = tokenizer_tgt.encode(item['translation'][config['lang_tgt']]).ids
+        src_ids = tokenizer_src.encode(item[config['lang_src']]).ids
+        tgt_ids = tokenizer_tgt.encode(item[config['lang_tgt']]).ids
         max_len_src = max(max_len_src, len(src_ids))
         max_len_tgt = max(max_len_tgt, len(tgt_ids))
 
