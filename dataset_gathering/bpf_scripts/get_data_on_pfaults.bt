@@ -9,7 +9,7 @@
 
 BEGIN
 {
-    printf("[BPFTRACE] Tracing userspace page faults for %s...\nStarting JSON\n{\n",str($1));
+    printf("[BPFTRACE] Tracing userspace page faults for %s...\nStarting JSON\n{\"a\":[\n",str($1));
 }
 
 /*  
@@ -40,5 +40,5 @@ kretprobe:handle_mm_fault
 
 END
 {
-    printf("}\n[BPFTRACE] Finished, exiting\n");
+    printf("]}\n[BPFTRACE] Finished, exiting\n");
 }
