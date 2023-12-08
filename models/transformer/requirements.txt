@@ -5,3 +5,4 @@ tokenizers
 torchmetrics
 tensorboard
 altair
+json5
