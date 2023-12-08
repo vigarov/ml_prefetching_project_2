@@ -1,6 +1,6 @@
 import json5
 import torch 
-
+import pandas as pd
 
 def load_json(filename): 
     with open(filename, 'r') as file: 
@@ -31,6 +31,9 @@ def label(data, source_window: int, target_window: int):
 
     return data_source
 
+
+def load_pandas(filename):
+    return pd.read_csv(filename, index_col=0).to_dict('records')
 
 if __name__ == "__main__":
     data= load_json("/home/alex/ml_prefetching/dataset_gathering/correct_out_3.txt")
