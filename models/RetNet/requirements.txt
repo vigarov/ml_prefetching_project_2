@@ -1,0 +1,6 @@
+torch
+torchtext
+transformers
+numpy
+timm
+portalocker
