@@ -6,11 +6,15 @@
 verbose=false
 output_file="/home/garvalov/ml_prefetching_project_2/dataset_gathering/results/out.txt"
 memory_limit=""
+use_bpftrace=false
+non_bpf_output_path="/home/garvalov/ml_prefetching_project_2/dataset_gathering/results/kernel/"
+exec_pid=-1
 # Function to display usage information
 display_usage() {
-    echo "[TraceRunner] Usage: $0 [-v] [-o output_file] [-c memory_limit] <parsec_bench_executable> [parsec executable's args...]"
+    echo "[TraceRunner] Usage: $0 [-v] [-b] [-o output_file] [-c memory_limit] <parsec_bench_executable> [parsec executable's args...]"
     echo "Options:"
     echo "  -v             Enable verbose mode"
+    echo "  -b             Use bpftrace (if custom kernel is not used; note that bpftrace misses some page faults under pressure as it relies on perf events)"
     echo "  -o output_file Specify the output file for bpftrace (default: $output_file)"
     echo "  -c memory_limit Specify memory limit for cgroup (e.g., 8MB, 2GB)"
     exit 1
@@ -29,11 +33,15 @@ human_readable_to_bytes() {
     esac
 }
 
+
 # Process command line options
-while getopts ":vo:c:" opt; do
+while getopts ":vbo:c:" opt; do
     case $opt in
         v)
             verbose=true
+            ;;
+        b)
+            use_bpftrace=true
             ;;
         o)
             output_file="$OPTARG"
@@ -64,34 +72,65 @@ fi
 parsec_bench_executable=$1
 parsec_bench_name=$(basename "$parsec_bench_executable")
 
-# Display command information if in verbose mode
-if [ "$verbose" = true ]; then
-    echo "[TraceRunner] Running bpftrace in the background to trace $parsec_bench_name"
-    echo "[TraceRunner] Command: bpftrace -o $output_file /home/garvalov/ml_prefetching_project_2/dataset_gathering/bpf_scripts/get_data_on_pfaults.bt \"$parsec_bench_name\" &"
-fi
+# Function to create a directory for results
+create_results_directory() {
+    local output_dir="$1"
 
-
-
-alias_name="bpftrace"
-path1="/home/garvalov/bpftrace/result/bin/bpftrace"
-path2="/home/garvalov/bp_appImage/bpftrace"
-
-if [[ "$(type -t bpftrace)" != "alias" ]]; then
-    # If the alias doesn't exist, create it
-    if [ -x "$path1" ]; then
-        correct_name=$path1
+    if [ ! -d "$output_dir" ]; then
+        mkdir -p "$output_dir"
+        echo "[TraceRunner] Created results directory: $output_dir"
     else
-        correct_name=$path2
+        if [ -z "$(ls -A "$output_dir")" ]; then
+            echo "[TraceRunner] Results directory already exists and is empty: $output_dir"
+        else
+            read -p "[TraceRunner] Results directory ($output_dir) is not empty. Do you want to overwrite? (y/n): " overwrite_choice
+            case "$overwrite_choice" in
+                y|Y)
+                    echo "[TraceRunner] Overwriting results directory: $output_dir"
+                    rm -rf "$output_dir"/*
+                    ;;
+                *)
+                    echo "[TraceRunner] Aborted. Please choose an empty directory or specify a different one."
+                    exit 1
+                    ;;
+            esac
+        fi
     fi
-    echo "[TraceRunner] Info, using $correct_name to run bpftrace."
+}
+
+if [ "$use_bpftrace" = true ]; then
+
+    # Display command information if in verbose mode
+    if [ "$verbose" = true ]; then
+        echo "[TraceRunner] Running bpftrace in the background to trace $parsec_bench_name"
+        echo "[TraceRunner] Command: bpftrace -o $output_file /home/garvalov/ml_prefetching_project_2/dataset_gathering/bpf_scripts/get_data_on_pfaults.bt \"$parsec_bench_name\" &"
+    fi
+
+    alias_name="bpftrace"
+    path1="/home/garvalov/bpftrace/result/bin/bpftrace"
+    path2="/home/garvalov/bp_appImage/bpftrace"
+
+    if [[ "$(type -t bpftrace)" != "alias" ]]; then
+        # If the alias doesn't exist, create it
+        if [ -x "$path1" ]; then
+            correct_name=$path1
+        else
+            correct_name=$path2
+        fi
+        echo "[TraceRunner] Info, using $correct_name to run bpftrace."
+    else
+        echo "[TraceRunner] Info - Alias $alias_name already exists"
+    fi
+
+
+    $correct_name -o $output_file /home/garvalov/ml_prefetching_project_2/dataset_gathering/bpf_scripts/get_data_on_pfaults.bt "$parsec_bench_name"  &
+    bpftrace_pid=$!
 else
-    echo "[TraceRunner] Info - Alias $alias_name already exists"
+    if [ -z "$output_file" ]; then
+        output_file="$non_bpf_output_path"
+    fi
+    create_results_directory "$output_file"
 fi
-
-
-$correct_name -o $output_file /home/garvalov/ml_prefetching_project_2/dataset_gathering/bpf_scripts/get_data_on_pfaults.bt "$parsec_bench_name"  &
-bpftrace_pid=$!
-
 
 
 cleanup_and_exit() {
@@ -109,7 +148,30 @@ cleanup_and_exit() {
 
     # Remove cgroup
     if [ -n "$memory_limit" ]; then
-        cgdelete memory:bpf_trace_cgroup
+        cgdelete memory:trace_cgroup
+    fi
+
+    if [ "$use_bpftrace" = false ] && [ -n "$output_file" ] && [ -d "$output_file" ]; then 
+        if [ "$exec_pid" = -1 ]; then 
+            echo "Execution PID not set; unable to clean directory properly..."
+        else
+            for entry in "$output_file"/*; do
+                entry_name=$(basename "$entry")
+                if [ "$entry_name" != "$exec_pid" ]; then
+                    if [ -d "$entry" ]; then
+                        rm -rf "$entry"
+                        if [ "$verbose" = true ]; then
+                            echo "[TraceRunner] Deleted directory: $entry"
+                        fi
+                    elif [ -f "$entry" ]; then
+                        rm -f "$entry"
+                        if [ "$verbose" = true ]; then
+                            echo "[TraceRunner] Deleted file: $entry"
+                        fi
+                    fi
+                fi
+            done
+        fi
     fi
 
     exit
@@ -149,30 +211,32 @@ auto_choose_unit() {
     fi
 }
 
-
 # Create a cgroup and execute the parsec benchmark inside it if memory_limit is specified
 if [ -n "$memory_limit" ]; then
     if [ "$verbose" = true ]; then
         human_readable_memory_limit="$(auto_choose_unit "$memory_limit")"
         echo "[TraceRunner] Using a $human_readable_memory_limit limited cgroup"
     fi
-    cgcreate -g memory:bpf_trace_cgroup
+    cgcreate -g memory:trace_cgroup
     if [ "$verbose" = true ]; then
-        echo "[TraceRunner] Created memory:bpf_trace_cgroup CGroup"
+        echo "[TraceRunner] Created memory:trace_cgroup CGroup"
     fi    
-    cgset -r memory.max=$memory_limit bpf_trace_cgroup
+    cgset -r memory.max=$memory_limit trace_cgroup
     if [ "$verbose" = true ]; then
-        echo "[TraceRunner] Set memory.limit_in_bytes:  cgset -r memory.max=$memory_limit bpf_trace_cgroup"
-        echo "[TraceRunner] Executing parsec benchmark in CGroup: cgexec -g memory:bpf_trace_cgroup $parsec_bench_executable $@"
+        echo "[TraceRunner] Set memory.limit_in_bytes:  cgset -r memory.max=$memory_limit trace_cgroup"
+        echo "[TraceRunner] Executing parsec benchmark in CGroup: cgexec -g memory:trace_cgroup $parsec_bench_executable $@"
     fi
-    cgexec -g memory:bpf_trace_cgroup "$parsec_bench_executable" "$@"
+    cgexec -g memory:trace_cgroup "$parsec_bench_executable" "$@" &
+    exec_pid=$!
 else
     if [ "$verbose" = true ]; then
         echo "[TraceRunner] Executing parsec benchmark: $parsec_bench_executable $@"
     fi
     # Execute the parsec benchmark without a cgroup if memory_limit is not specified
-    "$parsec_bench_executable" "$@"
+    "$parsec_bench_executable" "$@" &
+    exec_pid=$!
 fi
+wait "$exec_pid"
 
 end_sleep_secs=2
 
