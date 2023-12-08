@@ -148,7 +148,7 @@ def get_or_build_tokenizer(config, ds, lang):
 
 def get_ds(config):
     # It only has the train split, so we divide it overselves
-    ds_raw = label(load_pandas('/home/alex/ml_prefetching/dataset_gathering/pandas_data.csv'), 10, 10) #load_dataset(f"{config['datasource']}", f"{config['lang_src']}-{config['lang_tgt']}", split='train')
+    ds_raw = label(load_pandas(config["data_path"]), config["past_window"], config["k_predictions"]) #load_dataset(f"{config['datasource']}", f"{config['lang_src']}-{config['lang_tgt']}", split='train')
     print("loaded data")
     # Build tokenizers
     tokenizer_src = get_or_build_tokenizer(config, ds_raw, config['lang_src'])
