@@ -2,6 +2,9 @@ from pathlib import Path
 
 
 DATASET_PATH="/home/garvalov/ml_prefetching_project_2/data/canneal_v1.csv" #change depending on which machine is running train.py
+INPUT_FEATURES = ["address"]
+OUTPUT_FEATURES = ["address"]
+
 
 def get_config():
     return {
@@ -12,15 +15,15 @@ def get_config():
         "d_model": 512,
         "datasource": 'canneal_trace_v1',
         "data_path": DATASET_PATH,
-        "lang_src": "en",
-        "lang_tgt": "it",
         "model_folder": "weights",
         "model_basename": "tmodel_",
         "preload": "latest",
         "tokenizer_file": "tokenizer_{0}.json",
         "experiment_name": "runs/tmodel",
         "past_window": 10,
-        "k_predictions": 10
+        "k_predictions": 10,
+        "input_features": INPUT_FEATURES,
+        "output_features": OUTPUT_FEATURES
     }
 
 def get_weights_file_path(config, epoch: str):

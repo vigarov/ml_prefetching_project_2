@@ -25,8 +25,8 @@ def label(data, source_window: int, target_window: int):
         y = ""
         for j in range(i+source_window, i+source_window+target_window):
             y = y + " " + (data[j]["address"])
-        datum["en"] = x
-        datum["it"] = y
+        datum["prev_faults"] = x
+        datum["next_faults"] = y
         data_source.append(datum)
 
     return data_source

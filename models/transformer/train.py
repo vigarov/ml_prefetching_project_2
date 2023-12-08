@@ -16,8 +16,8 @@ from pathlib import Path
 # Huggingface datasets and tokenizers
 from datasets import load_dataset
 from tokenizers import Tokenizer
-from tokenizers.models import WordLevel
-from tokenizers.trainers import WordLevelTrainer
+from tokenizers.models import BPE
+from tokenizers.trainers import  BpeTrainer
 from tokenizers.pre_tokenizers import Whitespace
 
 import torchmetrics
@@ -129,21 +129,22 @@ def run_validation(model, validation_ds, tokenizer_src, tokenizer_tgt, max_len, 
         writer.add_scalar('validation accuracy', acc, global_step)
         writer.flush()
 
-def get_all_sentences(ds, lang):
+def get_all_sentences(ds):
     for item in ds:
         yield item[lang]
 
-def get_or_build_tokenizer(config, ds, lang):
-    tokenizer_path = Path(config['tokenizer_file'].format(lang))
-    if not Path.exists(tokenizer_path):
-        # Most code taken from: https://huggingface.co/docs/tokenizers/quicktour
-        tokenizer = Tokenizer(WordLevel(unk_token="[UNK]"))
-        tokenizer.pre_tokenizer = Whitespace()
-        trainer = WordLevelTrainer(special_tokens=["[UNK]", "[PAD]", "[SOS]", "[EOS]"], min_frequency=2)
-        tokenizer.train_from_iterator(get_all_sentences(ds, lang), trainer=trainer)
-        tokenizer.save(str(tokenizer_path))
-    else:
-        tokenizer = Tokenizer.from_file(str(tokenizer_path))
+def get_or_build_tokenizer(config, ds,feature_types):
+    for feature in feature_type:
+        tokenizer_path = Path(config['tokenizer_file'].format())
+        if not Path.exists(tokenizer_path):
+            # Most code taken from: https://huggingface.co/docs/tokenizers/quicktour
+            tokenizer = Tokenizer(BPE())
+            tokenizer.pre_tokenizer = Whitespace()
+            trainer = BpeTrainer(special_tokens=["[UNK]"], min_frequency=3)
+            tokenizer.train_from_iterator(get_all_sentences(ds), trainer=trainer)
+            tokenizer.save(str(tokenizer_path))
+        else:
+            tokenizer = Tokenizer.from_file(str(tokenizer_path))
     return tokenizer
 
 def get_ds(config):
@@ -151,8 +152,8 @@ def get_ds(config):
     ds_raw = label(load_pandas(config["data_path"]), config["past_window"], config["k_predictions"]) #load_dataset(f"{config['datasource']}", f"{config['lang_src']}-{config['lang_tgt']}", split='train')
     print("loaded data")
     # Build tokenizers
-    tokenizer_src = get_or_build_tokenizer(config, ds_raw, config['lang_src'])
-    tokenizer_tgt = get_or_build_tokenizer(config, ds_raw, config['lang_tgt'])
+    tokenizer_src = get_or_build_tokenizer(config, ds_raw,config["input_features"])
+    tokenizer_tgt = get_or_build_tokenizer(config, ds_raw)
 
     # Keep 90% for training, 10% for validation
     train_ds_size = int(0.9 * len(ds_raw))
