@@ -1,17 +1,18 @@
 import json5
-import torch 
+from pandas import DataFrame
 
 
 def load_json(filename): 
-    with open(filename, 'r') as file: 
-        data = file.read() 
-        data = data.replace("\n", " ") 
-    with open(filename, 'w') as file: 
-        file.write(data) 
+    print("Loading data")
+    # FIXME: I need bleach for my eyes Alex
+    #with open(filename, 'r') as file: 
+    #    data = file.read() 
+    #    data = data.replace("\n", " ") 
+    #with open(filename, 'w') as file: 
+    #    file.write(data) 
     with open(filename, 'r') as f:
         data = json5.load(f)['a']
-        for i in range(len(data)):
-            data[i] = {"address": hex(data[i]["address"])}
+    print("Loaded data")
     return data
 
 def label(data, source_window: int, target_window: int): 
@@ -31,9 +32,13 @@ def label(data, source_window: int, target_window: int):
 
     return data_source
 
+# change depending on which machine this is ran on
+RAW_DATA_PATH = "/home/vigarov/ml_prefetching_project_2/data/raw/correct_out_3.txt" 
+PREPROCESS_SAVE_PATH = "/home/vigarov/ml_prefetching_project_2/data/prepro/" 
+
+PREPRO_VERSION = 1
 
 if __name__ == "__main__":
-    data= load_json("/home/alex/ml_prefetching/dataset_gathering/correct_out_3.txt")
-    ds = label(data, 10, 10)
-    print(ds[:2])
-    print(data[0:40])
+    pd = DataFrame.from_dict(load_json(RAW_DATA_PATH))
+    BENCH_NAME = "canneal"
+    pd.to_csv(PREPROCESS_SAVE_PATH+BENCH_NAME+"_v"+str(PREPRO_VERSION)+".txt")

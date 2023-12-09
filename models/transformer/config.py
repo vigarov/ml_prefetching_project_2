@@ -1,7 +1,7 @@
 from pathlib import Path
 
 
-DATASET_PATH="/home/garvalov/ml_prefetching_project_2/data/canneal_v1.csv" #change depending on which machine is running train.py
+DATASET_PATH="/home/garvalov/ml_prefetching_project_2/data/canneal_v1.csv" # Change depending on which machine is running train.py
 INPUT_FEATURES = ["address"]
 OUTPUT_FEATURES = ["address"]
 
