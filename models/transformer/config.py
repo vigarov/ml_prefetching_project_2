@@ -1,9 +1,16 @@
 from pathlib import Path
+from dataclasses import dataclass
 
 
-DATASET_PATH="/home/garvalov/ml_prefetching_project_2/data/canneal_v1.csv" # Change depending on which machine is running train.py
-INPUT_FEATURES = ["address"]
-OUTPUT_FEATURES = ["address"]
+DATASET_PATH="/home/vigarov/ml_prefetching_project_2/data/processed/processed_canneal_v1.1.csv" # Change depending on which machine is running train.py
+
+@dataclass
+class Feature:
+    name:str
+    type:str
+
+INPUT_FEATURES = [Feature("prev_faults","address")]
+OUTPUT_FEATURES = [Feature("y","address")]
 
 
 def get_config():
