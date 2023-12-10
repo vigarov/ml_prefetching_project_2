@@ -1,44 +1,82 @@
 import json5
-from pandas import DataFrame
+from pandas import DataFrame,read_csv
+from pathlib import Path
+import ast
+import re
 
 
 def load_json(filename): 
     print("Loading data")
     # FIXME: I need bleach for my eyes Alex
-    #with open(filename, 'r') as file: 
-    #    data = file.read() 
-    #    data = data.replace("\n", " ") 
-    #with open(filename, 'w') as file: 
-    #    file.write(data) 
+    with open(filename, 'r') as file: 
+        data = file.read() 
+        data = data.replace("\n", " ") 
+    with open(filename, 'w') as file: 
+        file.write(data) 
     with open(filename, 'r') as f:
         data = json5.load(f)['a']
     print("Loaded data")
     return data
 
-def label(data, source_window: int, target_window: int): 
-    data_source=  []
-    #collect windows 
-    for i in range(len(data)-source_window-target_window):
-        datum = {}
-        x = []
-        for j in range(i, i+source_window):
-            x.append(data[j]["address"])
-        y = []
-        for j in range(i+source_window, i+source_window+target_window):
-            y.append(data[j]["address"])
-        datum["x"] = x
-        datum["y"] = y
-        data_source.append(datum)
-
-    return data_source
-
 # change depending on which machine this is ran on
 RAW_DATA_PATH = "/home/vigarov/ml_prefetching_project_2/data/raw/correct_out_3.txt" 
 PREPROCESS_SAVE_PATH = "/home/vigarov/ml_prefetching_project_2/data/prepro/" 
 
-PREPRO_VERSION = 1
+PREPRO_VERSION = 1.1
+PRO_VERSION = 1.2
+
+
+def preprocess(save=True):
+    df = DataFrame.from_dict(load_json(RAW_DATA_PATH))
+    BENCH_NAME = "canneal"
+    if save:
+        df.to_csv(PREPROCESS_SAVE_PATH+BENCH_NAME+"_v"+str(PREPRO_VERSION)+".csv",index=True)
+    else:
+        return df
+
+
+def process(source_window,pred_window,preprocessed_file,save = True):
+    p = Path(preprocessed_file)
+    assert p.exists() and p.is_file() and p.suffix == ".csv"
+    df = read_csv(preprocessed_file)
+    y = []
+
+    # Build history
+    running_past_window = [hex(a) for a in df["address"][:source_window]]
+    running_future_window = [hex(a) for a in df["address"][source_window:source_window+pred_window]]
+    for i in range(source_window, len(df)-pred_window):
+        fault_address = hex(df["address"][i])
+        df["address"][i] = " ".join(running_past_window.copy())
+        n_th_next_fault = hex(df["address"][i+pred_window])
+        y.append(" ".join(running_future_window.copy()))
+        running_past_window.pop()
+        running_past_window.append(fault_address)
+        running_future_window.pop()
+        running_future_window.append(n_th_next_fault)
+    
+    # Drop unused/useless entries = first "source window" ones which don't have enough history, and last "pred_window" ones, which have no predictions
+    to_drop = list(range(source_window))+list(range(len(df)-pred_window,len(df)))
+    df = df.drop(to_drop) 
+
+    assert len(df) == len(y) # Sanity check
+    df["y"] = y # add output to our data frame == have one file (input+output) per trace
+
+    df["ip"] = df["ip"].apply(lambda ip_int: hex(ip_int)) 
+    df["ustack"] = df["ustack"].apply(lambda ustack_str: ustack_str.replace('"','').strip())
+    df["regs"] = df["regs"].apply(lambda regs_array: ' '.join([str(reg) for reg in ast.literal_eval(regs_array.replace('"',''))]))
+    df["flags"] = df["flags"].apply(lambda flag: format(flag,"016b")) # flags are bitmaps,  might be easier to interpret if we spell them out as such
+    # Added space at the end because otherwise huggingface's `tokenizer` treat this as a number..., yielding an error
+
+    # Drop first column = index added by preprocessor
+    df = df.drop(columns=df.columns[[0]])
+    # Rename to reflect our new data
+    df = df.rename(columns={"address":"prev_faults"})
+
+    if save :
+        df.to_csv("/home/vigarov/ml_prefetching_project_2/data/processed/processed_"+re.sub(r"v\d+\.\d+",f"v{str(PRO_VERSION)}",p.name),index=False)
+    else:
+        return df
+
 
 if __name__ == "__main__":
-    pd = DataFrame.from_dict(load_json(RAW_DATA_PATH))
-    BENCH_NAME = "canneal"
-    pd.to_csv(PREPROCESS_SAVE_PATH+BENCH_NAME+"_v"+str(PREPRO_VERSION)+".txt")
+    process(2,10,"/home/vigarov/ml_prefetching_project_2/data/prepro/canneal_v1.1.csv",save=True)
