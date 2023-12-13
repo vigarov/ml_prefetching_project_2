@@ -1,6 +1,6 @@
 from model import build_transformer
 from dataset import BilingualDataset, causal_mask
-from config import get_config, get_weights_file_path, latest_weights_file_path
+from config import get_config, get_weights_file_path, latest_weights_file_path, get_all_configs
 
 import torchtext.datasets as datasets
 import torch
@@ -276,6 +276,10 @@ def train_model(config):
             'global_step': global_step
         }, model_filename)
 
+def multi_config_train():
+    configs = get_all_configs()
+    for c in configs:
+        train_model(c)
 
 if __name__ == '__main__':
     warnings.filterwarnings("ignore")

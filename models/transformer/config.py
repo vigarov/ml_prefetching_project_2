@@ -11,7 +11,7 @@ STATE_FN = "state.pt"
 class Feature:
     name: str
     type: str
-    max_len: int # in tokens
+    max_len: int  # in tokens
 
     def __str__(self):
         return self.name
@@ -29,9 +29,11 @@ FORCE_BYTE = True
 
 HEX_64_LEN = (8 if FORCE_BYTE else 16) + 1  # 1 for "0x"
 
-INPUT_FEATURES = [Feature("prev_faults", "hex_address",PAST_WINDOW*HEX_64_LEN + 2), Feature("flags", "bitmap",18), Feature("ip", "hex_address",HEX_64_LEN+2),
-                  Feature("ustack", "text",250), Feature("regs", "hex_number",20*HEX_64_LEN+2)]
-OUTPUT_FEATURES = [Feature("y", "hex_address",K_PREDICTIONS*HEX_64_LEN+2)]
+INPUT_FEATURES = [Feature("prev_faults", "hex_address", PAST_WINDOW * HEX_64_LEN + 2), Feature("flags", "bitmap", 18),
+                  Feature("ip", "hex_address", HEX_64_LEN + 2),
+                  Feature("ustack", "text", 250), Feature("regs", "hex_number", 20 * HEX_64_LEN + 2)]
+OUTPUT_FEATURES = [Feature("y", "hex_address", K_PREDICTIONS * HEX_64_LEN + 2)]
+
 
 @dataclass
 class TransformerModelParams:
@@ -41,9 +43,10 @@ class TransformerModelParams:
     dropout: float = 0.1
     d_ff: int = 2048
 
-def get_config():
+
+def get_default_config():
     config = {
-        "special_tokens": ["[PAD]","[SPR]","[UNK]"],  # Global
+        "special_tokens": ["[PAD]", "[SPR]", "[UNK]"],  # Global
         "batch_size": 8,  # Training hyperparameter
         "num_epochs": 22,  # Training hyperparameter
         "lr": 10 ** -4,  # Training hyperparameter
@@ -54,12 +57,13 @@ def get_config():
         "experiment_name": "runs/tmodel",  # Global
         "train_test_split": 0.75,  # Training hyperparameter
         "attention_model": "transformer",  # Model hyperparameter, choose with "retnet"
-        "attention_model_params" : TransformerModelParams(),  # Model hyperparameter
+        "attention_model_params": TransformerModelParams(),  # Model hyperparameter
         "past_window": PAST_WINDOW,  # Model hyperparameter
         "k_predictions": K_PREDICTIONS,  # Model hyperparameter
         "input_features": INPUT_FEATURES,  # Model hyperparameter
         "output_features": OUTPUT_FEATURES,  # Model hyperparameter
-        "embedding_technique": "concat_tokens"  # Model hyperparameter, choose with "hextet_concat", "onetext", "meta_transofrmer" TODO:, "embed_concat"
+        "embedding_technique": "concat_tokens"
+        # Model hyperparameter, choose with "hextet_concat", "onetext", "meta_transofrmer" TODO:, "embed_concat"
     }
 
     max_path = None
@@ -78,7 +82,7 @@ def get_config():
     config["data_path"] = max_path.absolute().as_posix()
 
     model_hash_features = ["attention_model", "past_window", "k_predictions", "input_features",
-                           "embedding_technique","embedding_technique"]
+                           "embedding_technique", "embedding_technique"]
 
     def parse_mhf(feature_name):
         model_feature = config[feature_name]
@@ -90,6 +94,27 @@ def get_config():
     config["model_basename"] = "_".join(parse_mhf(mhf)[:5] for mhf in model_hash_features)
 
     return config
+
+
+def get_config(model_name=None, past_window=None, k_predictions=None):
+    config = get_default_config()
+    if model_name is not None:
+        config["attention_model"] = model_name
+    if past_window is not None:
+        config["past_window"] = past_window
+    if k_predictions is not None:
+        config["k_predictions"] = k_predictions
+    return config
+
+
+def get_all_configs():
+    configs = []
+    for model_name in ["transformer", "retnet"]:
+        for k_predictions in [1, 5, 10, 15, 20]:
+            for past_window in [10, 16, 32, 64, 512, 1024]:
+                config = get_config(model_name, past_window, k_predictions)
+                configs.append(config)
+    return configs
 
 
 def get_model_full_path(config):
