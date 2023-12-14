@@ -1,6 +1,6 @@
 from model import build_transformer
 from dataset import BilingualDataset, causal_mask
-from config import get_config, get_weights_file_path, latest_weights_file_path, get_all_configs
+from config import get_config, get_weights_file_path, latest_weights_file_path, get_device, get_all_configs
 
 import torchtext.datasets as datasets
 import torch
@@ -186,20 +186,9 @@ def get_model(config, vocab_src_len, vocab_tgt_len):
     model = build_transformer(vocab_src_len, vocab_tgt_len, config["seq_len"], config['seq_len'], d_model=config['d_model'])
     return model
 
-def train_model(config):
+def train_model(config, complete_save=False):
     # Define the device
-    device = "cuda" if torch.cuda.is_available() else "mps" if torch.has_mps or torch.backends.mps.is_available() else "cpu"
-    print("Using device:", device)
-    if (device == 'cuda'):
-        print(f"Device name: {torch.cuda.get_device_name(device.index)}")
-        print(f"Device memory: {torch.cuda.get_device_properties(device.index).total_memory / 1024 ** 3} GB")
-    elif (device == 'mps'):
-        print(f"Device name: <mps>")
-    else:
-        print("NOTE: If you have a GPU, consider using it for training.")
-        print("      On a Windows machine with NVidia GPU, check this video: https://www.youtube.com/watch?v=GMSjDTU8Zlc")
-        print("      On a Mac machine, run: pip3 install --pre torch torchvision torchaudio torchtext --index-url https://download.pytorch.org/whl/nightly/cpu")
-    device = torch.device(device)
+    device = get_device()
 
     # Make sure the weights folder exists
     Path(f"{config['datasource']}_{config['model_folder']}").mkdir(parents=True, exist_ok=True)
