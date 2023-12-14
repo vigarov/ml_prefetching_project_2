@@ -258,7 +258,7 @@ def build_model(config, in_vocab_size: int, out_vocab_size: int, pos_in_len: int
         raise NotImplementedError
 
     # Create the positional encoding layers
-    # "meta_transformer" and "embed_concat" if we implement it also adds pos. encodings after the embedding, so no worries
+    # "meta_transformer" and "embed_concat" also adds pos. encodings after the embedding, so all good
     src_pos = PositionalEncoding(model_pms.d_model, pos_in_len, model_pms.dropout)
     tgt_pos = PositionalEncoding(model_pms.d_model, pos_out_len, model_pms.dropout)
 
