@@ -1,5 +1,6 @@
 import copy
 from dataclasses import dataclass
+import numpy as np
 
 import tokenizers
 
@@ -36,6 +37,8 @@ def greedy_decode(model, source, source_mask, tokenizer_src, tokenizer_tgt, max_
 
     # Precompute the encoder output and reuse it for every step
     encoder_output = model.encode(source, source_mask)
+    print(torch.mean(encoder_output))
+    print(torch.std(encoder_output))
     # Initialize the decoder input with the sos token
     decoder_input = torch.empty(1, 1).fill_(sos_idx).type_as(source).to(device)
     while True:
@@ -138,26 +141,28 @@ def run_validation(model, validation_ds, tokenizer_src, tokenizer_tgt, max_len, 
         writer.flush()
 
 
+def get_feature_tokenizer(tok_file, feature, padder=False) -> st.TokenizerWrapper: #todo revert
+    SPACE_SPLITTER = st.Splitter(lambda input_str: input_str.split(), config["list_elem_separation_token"])
+    is_list = "list" in feature.type
+    primitive_feature_type = feature.get_primitive_type()
+
+    tokenizer_path = Path(tok_file.format(primitive_feature_type))
+    assert tokenizer_path.exists() and tokenizer_path.suffix == ".json"
+    tokenizer = Tokenizer.from_file(tokenizer_path.absolute().as_posix())
+    splitter = None
+    if is_list:
+        splitter = SPACE_SPLITTER
+    pad_token = config["pad_token"] if padder else None
+    return st.TokenizerWrapper(
+        tokenizer,
+        len(config["bpe_special_tokens"]),
+        feature.max_len,
+        splitter,
+        pad_token=pad_token)
+
+
 def get_tokenizers(config) -> ((st.ConcatTokenizer | list[st.TokenizerWrapper]), st.TokenizerWrapper):
     SPACE_SPLITTER = st.Splitter(lambda input_str: input_str.split(), config["list_elem_separation_token"])
-
-    def get_feature_tokenizer(tok_file, feature, padder=False) -> st.TokenizerWrapper:
-        is_list = "list" in feature.type
-        primitive_feature_type = feature.get_primitive_type()
-
-        tokenizer_path = Path(tok_file.format(primitive_feature_type))
-        assert tokenizer_path.exists() and tokenizer_path.suffix == ".json"
-        tokenizer = Tokenizer.from_file(tokenizer_path.absolute().as_posix())
-        splitter = None
-        if is_list:
-            splitter = SPACE_SPLITTER
-        pad_token = config["pad_token"] if padder else None
-        return st.TokenizerWrapper(
-            tokenizer,
-            len(config["bpe_special_tokens"]),
-            feature.max_len,
-            splitter,
-            pad_token=pad_token)
 
     def get_feature_tokenizer_dict(tok_file, features, all_padders=False):
         ret_dict = {}
@@ -305,12 +310,11 @@ def train_model(config):
         assert state_path.exists()
         gen_state = torch.load(state_path.absolute().as_posix())
     else:
-        torch.save(generator.seed(),(gen_dir/SEED_FN).as_posix())
-
+        torch.save(generator.seed(), (gen_dir / SEED_FN).as_posix())
 
     train_dataloader, val_dataloader, tokenizer_src, tokenizer_tgt = get_ds(config, generator)
     # Save generator TODO: useless to do here, save at weight save time iff generator impacts training
-    torch.save(generator.get_state(),(gen_dir / STATE_FN).as_posix())
+    torch.save(generator.get_state(), (gen_dir / STATE_FN).as_posix())
     model = get_model(config, tokenizer_src, tokenizer_tgt).to(device)
     # Tensorboard
     writer = SummaryWriter(config['experiment_folder'])
@@ -326,7 +330,8 @@ def train_model(config):
         else None
     if model_filename:
         assert was_currently_training
-        generator.set_state(gen_state)  # TODO: I think we might not need that - past weight initialization, there is no randomness right? Incorrect for dropout? Incorrect for beam search?
+        generator.set_state(
+            gen_state)  # TODO: I think we might not need that - past weight initialization, there is no randomness right? Incorrect for dropout? Incorrect for beam search?
         print(f'Preloading model {model_filename}')
         state = torch.load(model_filename)
         model.load_state_dict(state['model_state_dict'])
@@ -359,6 +364,8 @@ def train_model(config):
 
             # Run the tensors through the encoder, decoder and the projection layer
             encoder_output = model.encode(encoder_input, encoder_mask)  # (B, seq_len, d_model)
+            print(torch.mean(encoder_output))
+            print(torch.std(encoder_output))
             decoder_output = model.decode(encoder_output, encoder_mask, decoder_input,
                                           decoder_mask)  # (B, seq_len, d_model)
             proj_output = model.project(decoder_output)  # (B, seq_len, vocab_size)
@@ -398,5 +405,76 @@ def train_model(config):
 
 
 if __name__ == '__main__':
-    warnings.filterwarnings("ignore")
-    train_model(get_config())
+    # warnings.filterwarnings("ignore")
+    # train_model(get_config())
+    config = get_config()
+    device = "cuda" if torch.cuda.is_available() else "mps" if torch.has_mps or torch.backends.mps.is_available() else "cpu"
+    print("Using device:", device)
+    if (device == 'cuda'):
+        print(f"Device name: {torch.cuda.get_device_name(device.index)}")
+        print(f"Device memory: {torch.cuda.get_device_properties(device.index).total_memory / 1024 ** 3} GB")
+    elif (device == 'mps'):
+        print(f"Device name: <mps>")
+    else:
+        print("NOTE: If you have a GPU, consider using it for training.")
+        print(
+            "      On a Windows machine with NVidia GPU, check this video: https://www.youtube.com/watch?v=GMSjDTU8Zlc")
+        print(
+            "      On a Mac machine, run: pip3 install --pre torch torchvision torchaudio torchtext --index-url https://download.pytorch.org/whl/nightly/cpu")
+    device = torch.device(device)
+
+    if "processed" in config["data_path"]:
+        df_raw = read_csv(config["data_path"])
+    else:
+        df_raw = process(config["data_path"], config["past_window"], config["k_predictions"],
+                         save=False)  # load_dataset(f"{config['datasource']}", f"{config['lang_src']}-{config['lang_tgt']}", split='train')
+    df_raw = df_raw.astype({col: str for col in df_raw.columns if df_raw[col].dtype == "int64"})
+    print("loaded data")
+    # Build tokenizers
+    src_tokenizer, tgt_tokenizer = get_tokenizers(config)
+
+    train_tensor_size = int(config["train_test_split"] * len(df_raw))
+    indices = torch.arange(
+        len(df_raw))  # torch.randperm(len(df_raw), generator=generator)  # TODO think about overlapping pfault windows
+
+    feature_tokenizer = get_feature_tokenizer(config['tokenizer_files'], config['input_features'][3])
+    dataframe = df_raw['ustack']
+    lengths = []
+    occurences = {}
+    for data in dataframe:
+        data_list = data #.values.flatten().tolist()[0]
+        encoded = feature_tokenizer.encode(data_list)
+        ids = encoded.ids
+        lengths.append(len(ids))
+
+        for id in ids:
+            token = feature_tokenizer.id_to_token(id)
+            occurences[token] = occurences.get(token, 0) + 1
+
+
+
+    print(f"Mean length tokenized string: {np.mean(lengths)}")
+    print(f"Std length tokenized string: {np.std(lengths)}")
+    most_common_tokens = sorted(occurences, key=occurences.get, reverse=True)[:10]
+    total_occurences = np.sum(list(occurences.values()))
+    print("Most common tokens:")
+    for token in most_common_tokens:
+        print(f"\tToken {token} ({feature_tokenizer.token_to_id(token)}), total occurences = {occurences[token]}, percentage = {(occurences[token] / total_occurences)*100}")
+
+    #create graph of occurences with tokens at the basis axis
+    import matplotlib.pyplot as plt
+    plt.bar(range(len(occurences)), list(occurences.values()), align='center')
+    plt.xticks(range(len(occurences)), list(occurences.keys()))
+    plt.show()
+
+    plt.bar(range(len(most_common_tokens)), [occurences[token] for token in most_common_tokens], align='center')
+    plt.xticks(range(len(most_common_tokens)), most_common_tokens)
+    plt.show()
+
+    token_ids = [feature_tokenizer.token_to_id(token) for token in most_common_tokens]
+    #and one for most_common_tokens showing the token id on the basis axis
+    plt.bar(range(len(most_common_tokens)), [occurences[token] for token in most_common_tokens], align='center')
+    plt.xticks(range(len(most_common_tokens)), token_ids)
+    plt.show()
+
+
