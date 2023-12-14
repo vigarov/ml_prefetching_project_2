@@ -1,4 +1,4 @@
-from model import build_transformer
+from model import build_model
 from dataset import BilingualDataset, causal_mask
 from config import get_config, get_weights_file_path, latest_weights_file_path, get_device, get_all_configs
 
@@ -131,10 +131,10 @@ def run_validation(model, validation_ds, tokenizer_src, tokenizer_tgt, max_len, 
 
 def get_all_sentences(ds):
     for item in ds:
-        yield item[lang]
+        yield item[config['lang_src']]
 
 def get_or_build_tokenizer(config, ds,feature_types):
-    for feature in feature_type:
+    for feature in feature_types:
         tokenizer_path = Path(config['tokenizer_file'].format())
         if not Path.exists(tokenizer_path):
             # Most code taken from: https://huggingface.co/docs/tokenizers/quicktour
@@ -183,7 +183,7 @@ def get_ds(config):
     return train_dataloader, val_dataloader, tokenizer_src, tokenizer_tgt
 
 def get_model(config, vocab_src_len, vocab_tgt_len):
-    model = build_transformer(vocab_src_len, vocab_tgt_len, config["seq_len"], config['seq_len'], d_model=config['d_model'])
+    model = build_model(config, vocab_src_len, vocab_tgt_len, config["seq_len"], config['seq_len'])
     return model
 
 def train_model(config, complete_save=False):

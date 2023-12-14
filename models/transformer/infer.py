@@ -13,8 +13,8 @@ from models.transformer.train import get_model
 
 class Inferer:
     def __init__(self, config, model=None, device=None):
-        tokenizer_src_path = Path(config['tokenizer_file'].format(config['lang_src']))
-        tokenizer_tgt_path = Path(config['tokenizer_file'].format(config['lang_tgt']))
+        tokenizer_src_path = Path(config['tokenizer_files'].format(config['lang_src']))
+        tokenizer_tgt_path = Path(config['tokenizer_files'].format(config['lang_tgt']))
 
         tokenizer_src = Tokenizer.from_file(str(tokenizer_src_path))
         tokenizer_tgt = Tokenizer.from_file(str(tokenizer_tgt_path))
