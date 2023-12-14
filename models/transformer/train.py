@@ -28,7 +28,7 @@ from trained_tokenizers import special_tokenizers as st
 
 import torchmetrics
 from torch.utils.tensorboard import SummaryWriter
-
+from sklearn.metrics import accuracy_score
 
 def greedy_decode(model, source, source_mask, tokenizer_src, tokenizer_tgt, max_len, device):
     sos_idx = tokenizer_tgt.token_to_id('[SOS]')
@@ -135,6 +135,27 @@ def run_validation(model, validation_ds, tokenizer_src, tokenizer_tgt, max_len, 
         acc = [len(a.intersection(b)) / len(a) for a, b in zip(new_pred, new_expected)]
         acc = sum(acc) / len(acc)
         writer.add_scalar('validation accuracy', acc, global_step)
+        writer.flush()
+        # Compute the accuracy metric
+        new_pred = [set(a.split(" ")) for a in predicted]
+        new_expected = [set(a.split(" ")) for a in expected]
+        acc = [len(a.intersection(b))/len(a) for a,b in zip(new_pred, new_expected)]
+        acc = sum(acc) / len(acc)
+        writer.add_scalar('validation accuracy', acc, global_step)
+        writer.flush()
+
+        # Compute the sklearn accuracy (?)
+        avg_acc = 0
+        for i, prex in enumerate(zip(predicted, expected)):
+            pred = prex[0].split(" ")
+            exp = prex[1].split(" ")
+            exp = list(filter(lambda x: len(x) > 1, exp))
+            pred = list(filter(lambda x: len(x) > 1, pred))
+            if len(pred) < 10:
+                pred.extend([''] * (10-len(pred)))
+            avg_acc += accuracy_score(pred, exp)
+        avg_acc /= len(expected)
+        writer.add_scalar("sklearn acc", avg_acc, global_step)
         writer.flush()
 
 
@@ -248,6 +269,7 @@ def get_ds(config, generator):
 def get_model(config, inp_tokenizer: st.ConcatTokenizer | list[st.TokenizerWrapper] | st.TokenizerWrapper,
               out_tokenizer: st.TokenizerWrapper):
     embedding_type = config["embedding_technique"]
+    
     out_vocab_size = out_tokenizer.get_vocab_size()
     out_seq_len = int(config["output_features"][0].max_len)
     if embedding_type in ["concat_tokens", "hextet_concat"]:

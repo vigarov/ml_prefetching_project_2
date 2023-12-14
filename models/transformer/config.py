@@ -35,7 +35,7 @@ HEX_64_LEN = (8 if FORCE_BYTE else 16) + 1  # 1 for "0x"
 INPUT_FEATURES = [Feature("prev_faults", "hex_address_list",PAST_WINDOW*(HEX_64_LEN+1) - 1),
                   Feature("flags", "bitmap",18),
                   Feature("ip", "hex_address",HEX_64_LEN+2),
-                  Feature("ustack", "text",250),
+                #   Feature("ustack", "text",250),
                   Feature("regs", "hex_number",20*(HEX_64_LEN+1)-1)]
 OUTPUT_FEATURES = [Feature("y", "hex_address_list",K_PREDICTIONS*(HEX_64_LEN+1)-1)]
 
