@@ -217,7 +217,7 @@ class ConcatTokenizer:
             if pad:
                 needed_pad_tokens = tokenizer.get_pad_length() - len(encoded_tokens_list)
                 if needed_pad_tokens < 0:
-                    raise ValueError(f"Input too long for feature {i}")
+                    raise ValueError(f"Input too long for feature {i}: max length permitted = {tokenizer.get_pad_length()}, while the encoded sequence was {len(encoded_tokens_list)}")
                 encoded_tokens_list = encoded_tokens_list + [self.pt_id] * needed_pad_tokens
             ret.ids += encoded_tokens_list
             if i != len(features_to_encode) - 1:
