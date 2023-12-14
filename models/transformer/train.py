@@ -12,7 +12,7 @@ import warnings
 from tqdm import tqdm
 import os
 from pathlib import Path
-
+from sklearn.metrics import accuracy_score
 # Huggingface datasets and tokenizers
 from datasets import load_dataset
 from tokenizers import Tokenizer
@@ -121,7 +121,7 @@ def run_validation(model, validation_ds, tokenizer_src, tokenizer_tgt, max_len, 
         writer.add_scalar('validation BLEU', bleu, global_step)
         writer.flush()
 
-        # Compute the BLEU metric
+        # Compute the accuracy metric
         new_pred = [set(a.split(" ")) for a in predicted]
         new_expected = [set(a.split(" ")) for a in expected]
         acc = [len(a.intersection(b))/len(a) for a,b in zip(new_pred, new_expected)]
@@ -129,6 +129,19 @@ def run_validation(model, validation_ds, tokenizer_src, tokenizer_tgt, max_len, 
         writer.add_scalar('validation accuracy', acc, global_step)
         writer.flush()
 
+        # Compute the sklearn accuracy (?)
+        avg_acc = 0
+        for i, prex in enumerate(zip(predicted, expected)):
+            pred = prex[0].split(" ")
+            exp = prex[1].split(" ")
+            exp = list(filter(lambda x: len(x) > 1, exp))
+            pred = list(filter(lambda x: len(x) > 1, pred))
+            if len(pred) < 10:
+                pred.extend([''] * (10-len(pred)))
+            avg_acc += accuracy_score(pred, exp)
+        avg_acc /= len(expected)
+        writer.add_scalar("sklearn acc", avg_acc, global_step)
+        writer.flush()
 def get_all_sentences(ds, lang):
     for item in ds:
         yield item[lang]

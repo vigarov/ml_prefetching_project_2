@@ -1,6 +1,8 @@
 import json5
 import torch 
-
+from datasets import load_dataset
+import datetime
+import pandas as pd
 
 def load_json(filename): 
     with open(filename, 'r') as file: 
@@ -11,7 +13,7 @@ def load_json(filename):
     with open(filename, 'r') as f:
         data = json5.load(f)['a']
         for i in range(len(data)):
-            data[i] = {"address": hex(data[i]["address"])}
+            data[i]["address"] = hex(data[i]["address"])
     return data
 
 def label(data, source_window: int, target_window: int): 
@@ -32,8 +34,13 @@ def label(data, source_window: int, target_window: int):
     return data_source
 
 
+
 if __name__ == "__main__":
-    data= load_json("/home/alex/ml_prefetching/dataset_gathering/correct_out_3.txt")
+    start=datetime.datetime.now()
+    # data= load_json("/home/alex/ml_prefetching/dataset_gathering/correct_out_3.txt") #0:01:37.987487 to run
+    data =  pd.read_csv('/home/alex/ml_prefetching/dataset_gathering/pandify.csv', index_col=0).to_dict('records')
     ds = label(data, 10, 10)
+    end = datetime.datetime.now()
+    print("took", end-start, "to run")
     print(ds[:2])
     print(data[0:40])
