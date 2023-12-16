@@ -53,9 +53,9 @@ def process(preprocessed_file,source_window,pred_window,save = False):
         df["address"][i] = " ".join(running_past_window.copy())
         n_th_next_fault = hex(df["address"][i+pred_window])
         y.append(" ".join(running_future_window.copy()))
-        running_past_window.pop()
+        running_past_window.pop(0)
         running_past_window.append(fault_address)
-        running_future_window.pop()
+        running_future_window.pop(0)
         running_future_window.append(n_th_next_fault)
     
     # Drop unused/useless entries = first "source window" ones which don't have enough history, and last "pred_window" ones, which have no predictions
@@ -82,4 +82,4 @@ def process(preprocessed_file,source_window,pred_window,save = False):
 
 
 if __name__ == "__main__":
-    process("/home/vigarov/ml_prefetching_project_2/data/prepro/canneal_v1.1.csv",2,10,save=True)
+    process("/home/vigarov/ml_prefetching_project_2/data/prepro/canneal_v1.1.csv",10,10,save=True)
