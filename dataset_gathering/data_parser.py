@@ -23,7 +23,7 @@ RAW_DATA_PATH = "/home/vigarov/ml_prefetching_project_2/data/raw/correct_out_3.t
 PREPROCESS_SAVE_PATH = "/home/vigarov/ml_prefetching_project_2/data/prepro/" 
 
 PREPRO_VERSION = 1.1
-PRO_VERSION = 1.3
+PRO_VERSION = 1.4
 
 
 def preprocess(path=RAW_DATA_PATH,save=True):
@@ -67,7 +67,7 @@ def process(preprocessed_file,source_window,pred_window,save = False):
 
     df["ip"] = df["ip"].apply(lambda ip_int: hex(ip_int)) 
     df["ustack"] = df["ustack"].apply(lambda ustack_str: ustack_str.replace('"','').strip())
-    df["regs"] = df["regs"].apply(lambda regs_array: ' '.join([hex(reg) for reg in ast.literal_eval(regs_array.replace('"',''))])) #have regs in hex, makes more sense and reduces input size/dimension post tokenization
+    df["regs"] = df["regs"].apply(lambda regs_array: ' '.join(["0x"+hex(reg)[2:].zfill(2) for reg in ast.literal_eval(regs_array.replace('"',''))])) #have regs in hex, makes more sense and reduces input size/dimension post tokenization
     df["flags"] = df["flags"].apply(lambda flag: format(flag,"016b")) # flags are bitmaps,  might be easier to interpret if we spell them out as such
 
     # Drop first column = index added by preprocessor

@@ -2,7 +2,7 @@ from pathlib import Path
 from dataclasses import dataclass
 import re
 
-DATA_PATH = "data/processed/"
+DATA_PATH = "data/prepro/"
 GENERATOR_PREFIX = "gen"
 SEED_FN = "rand_seed.pt"
 STATE_FN = "state.pt"
@@ -29,15 +29,16 @@ FORCE_BYTE = True
 #             ip, 16, similar as prev_pfaults, but no array-> no mult
 #             ustack, don't know yet, use big value for now TODO
 #             regs, #regs*len_max_reg_value_in_chosen_base = 20 * (16 + 1 ("0x")) + (20-1) = 20 * (8+1) + 2 if FORCE_BYTE
+# output's lengths will be +2 because of SOS/EOS tokens
 
 HEX_64_LEN = (8 if FORCE_BYTE else 16) + 1  # 1 for "0x"
 
 INPUT_FEATURES = [Feature("prev_faults", "hex_address_list",PAST_WINDOW*(HEX_64_LEN+1) - 1),
                   Feature("flags", "bitmap",18),
                   Feature("ip", "hex_address",HEX_64_LEN+2),
-                  Feature("ustack", "text",250),
-                  Feature("regs", "hex_number",20*(HEX_64_LEN+1)-1)]
-OUTPUT_FEATURES = [Feature("y", "hex_address_list",K_PREDICTIONS*(HEX_64_LEN+1)-1)]
+                  #Feature("ustack", "text",2048), # Commnent if not running on `gpu`, as you'll likely run OOM
+                  Feature("regs", "hex_number_list",20*(HEX_64_LEN+1)-1)]
+OUTPUT_FEATURES = [Feature("y", "hex_address_list",K_PREDICTIONS*(HEX_64_LEN+1)-1 + 2)]
 
 @dataclass
 class TransformerModelParams:
@@ -51,9 +52,10 @@ def get_config():
     config = {
         "bpe_special_tokens": ["[UNK]"],  # Global, tokenizers specific
         "pad_token": "[PAD]",  # Global, tokenizers specific
-        "list_elem_separation_token": " ",  # Global, tokenizers specific; be careful with that one, see comment in WrapperClass of special_tokenizers.py
+        "list_elem_separation_token": " ",  # Global, tokenizers specific; be careful with that one, see comment in TokenizerWrapper of special_tokenizers.py
         "feature_separation_token": "[FSP]", # Global, tokenizers specific
-        "batch_size": 8,  # Training hyperparameter
+        "start_stop_generating_tokens" : ["[GTR]","[GTP]"], # Global, tokenizers specific
+        "batch_size": 16,  # Training hyperparameter
         "num_epochs": 22,  # Training hyperparameter
         "lr": 10 ** -4,  # Training hyperparameter
         "datasource": "canneal",  # Global
@@ -72,7 +74,7 @@ def get_config():
         # With "onetext" treat all the features as one text (use specifc text tokenizer), add SOS/TOS?, embed
         # With "meta_transformer", tokenize each feature, pad as with concat, instead of embedding, throw in transformer
         # With "embed_concat", we embed each feature independently of each other, then concatenate the embeddings
-        "embedding_technique": "concat_tokens"  # Model hyperparameter, choose with "hextet_concat", "onetext", "meta_transofrmer", "embed_concat"
+        "embedding_technique": "hextet_concat"  # Model hyperparameter, choose with "concat_tokens","hextet_concat", "onetext", "meta_transofrmer", "embed_concat"
     }
 
     max_path = None
