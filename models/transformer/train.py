@@ -1,27 +1,23 @@
-from trained_tokenizers.special_tokenizers import SimpleTokenIdList
-
-from model import build_model
-from models.common.config import get_config, get_weights_file_path, latest_weights_file_path, source_model_files, get_model_full_path, \
-    SEED_FN, STATE_FN, GENERATOR_PREFIX, Feature
-from models.common.dataset import PageFaultDataset,causal_mask
-
-import torch.nn as nn
-from torch.utils.data import DataLoader, random_split
-from models.common.data_parser import *
-import warnings
-from tqdm import tqdm
 import os
-from pathlib import Path
-from pandas import read_csv
+import warnings
 
-from tokenizers import Tokenizer
-from tokenizers.models import BPE
-from tokenizers.pre_tokenizers import Whitespace
-
-from trained_tokenizers import special_tokenizers as st
-
+import torch
+import torch.nn as nn
 import torchmetrics
+from tokenizers import Tokenizer
+from torch.utils.data import DataLoader
 from torch.utils.tensorboard import SummaryWriter
+from tqdm import tqdm
+
+from models.common.build_model import build_model
+from models.common.config import get_config, get_weights_file_path, latest_weights_file_path, source_model_files, \
+    get_model_full_path, \
+    SEED_FN, STATE_FN, GENERATOR_PREFIX, Feature, get_all_configs
+from models.common.data_parser import *
+from models.common.dataset import PageFaultDataset, causal_mask
+from models.common.trained_tokenizers import special_tokenizers as st
+from models.common.trained_tokenizers.special_tokenizers import SimpleTokenIdList
+
 
 def greedy_decode(model,
                   source_data, source_mask,
@@ -260,10 +256,9 @@ def get_ds(config, generator) -> (
     # Build tokenizers
     src_tokenizer, tgt_tokenizer = get_tokenizers(config)
 
-    # Keep 90% for training, 10% for validation
-    train_ds_size = int(config['train_test_split'] * len(ds_raw))
-    val_ds_size = len(ds_raw) - train_ds_size
-    train_ds_raw, val_ds_raw = random_split(ds_raw, [train_ds_size, val_ds_size])
+    train_tensor_size = int(config["train_test_split"] * len(df_raw))
+    indices = torch.arange(
+        len(df_raw))  # torch.randperm(len(df_raw), generator=generator)  # TODO think about overlapping pfault windows
 
     train_ds = PageFaultDataset(config, df_raw, indices[:train_tensor_size],
                                 src_tokenizer,
@@ -298,89 +293,12 @@ def get_model(config, inp_tokenizer: st.ConcatTokenizer | list[st.TokenizerWrapp
         # TODO cont: This might however not be needed, maybe we can do with only the different sizes/lengths
         raise NotImplementedError
 
-    model = build_model(config, src_vocab_size, out_vocab_size, inp_seq_len, out_seq_len)
+    pad_token_id = inp_tokenizer.token_to_id(config["pad_token"])[0]
+    model = build_model(config, src_vocab_size, out_vocab_size, inp_seq_len, out_seq_len, pad_token_id)
     return model
 
 
-def train_model(config):
-    # Define the device
-    device = "cuda" if torch.cuda.is_available() else "mps" if torch.has_mps or torch.backends.mps.is_available() else "cpu"
-    print("Using device:", device)
-    if (device == 'cuda'):
-        print(f"Device name: {torch.cuda.get_device_name(device.index)}")
-        print(f"Device memory: {torch.cuda.get_device_properties(device.index).total_memory / 1024 ** 3} GB")
-    elif (device == 'mps'):
-        print(f"Device name: <mps>")
-    else:
-        print("NOTE: If you have a GPU, consider using it for training.")
-        print(
-            "      On a Windows machine with NVidia GPU, check this video: https://www.youtube.com/watch?v=GMSjDTU8Zlc")
-        print(
-            "      On a Mac machine, run: pip3 install --pre torch torchvision torchaudio torchtext --index-url https://download.pytorch.org/whl/nightly/cpu")
-    device = torch.device(device)
-
-    # Check if we're in the middle of a "train" : if yes, load the current random sample (based off the seed)
-    # Else, take (new) random seed
-    was_currently_training = len(source_model_files(config)) != 0
-    generator = torch.Generator(device)
-    mp = Path(get_model_full_path(config))
-    # Make sure the model's run folder exists
-    mp.mkdir(parents=True, exist_ok=True)
-    # Also create the generator folder
-    gen_dir = mp / GENERATOR_PREFIX
-    gen_dir.mkdir(parents=True, exist_ok=True)
-    if was_currently_training:
-        seed_path = gen_dir / SEED_FN
-        assert seed_path.exists()
-        seed = torch.load(seed_path.absolute().as_posix())
-        generator = generator.manual_seed(seed)
-        state_path = gen_dir / STATE_FN
-        assert state_path.exists()
-        gen_state = torch.load(state_path.absolute().as_posix())
-    else:
-        torch.save(generator.seed(), (gen_dir / SEED_FN).as_posix())
-
-    train_dataloader, val_dataloader, tokenizer_src, tokenizer_tgt = get_ds(config, generator)
-    # Save generator TODO: useless to do here, save at weight save time iff generator impacts training
-    torch.save(generator.get_state(), (gen_dir / STATE_FN).as_posix())
-    model = get_model(config, tokenizer_src, tokenizer_tgt).to(device)
-    # Tensorboard
-    writer = SummaryWriter(config['experiment_folder'])
-
-    optimizer = torch.optim.Adam(model.parameters(), lr=config['lr'], eps=1e-9)
-
-    # If the user specified a model to preload before training, load it
-    initial_epoch = 0
-    global_step = 0
-    preload = config['preload']
-    model_filename = latest_weights_file_path(config) if preload == 'latest' \
-        else get_weights_file_path(config, preload) if preload \
-        else None
-    if model_filename:
-        assert was_currently_training
-        generator.set_state(
-            gen_state)  # TODO: I think we might not need that - past weight initialization, there is no randomness right? Incorrect for dropout? Incorrect for beam search?
-        print(f'Preloading model {model_filename}')
-        state = torch.load(model_filename)
-        model.load_state_dict(state['model_state_dict'])
-        initial_epoch = state['epoch'] + 1
-        optimizer.load_state_dict(state['optimizer_state_dict'])
-        global_step = state['global_step']
-    else:
-        print('No model to preload, starting from scratch')
-
-    embedding_type = config["embedding_technique"]
-    if embedding_type in ["meta_transformer", "embed_concat"]:
-        # TODO: one loss per embedding layer? imo yes
-        raise NotImplementedError
-    else:
-        input_src_potential_pad_ids = tokenizer_src.token_to_id(config["pad_token"])
-        output_pad_id = tokenizer_tgt.token_to_id(config["pad_token"])
-        assert len(input_src_potential_pad_ids) == 1 and input_src_potential_pad_ids[0] == output_pad_id
-        loss_fn = nn.CrossEntropyLoss(ignore_index=output_pad_id,
-                                      label_smoothing=0.1).to(device)
-
-
+def train_model(model, config, optimizer, train_dataloader, val_dataloader, loss_fn, tokenizer_tgt, device, writer, initial_epoch, global_step):
     for epoch in range(initial_epoch, config['num_epochs']):
         torch.cuda.empty_cache()
         model.train()

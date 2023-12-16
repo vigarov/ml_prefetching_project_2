@@ -52,7 +52,7 @@ import torch
 
 DATASET_PATH = "/home/garvalov/ml_prefetching_project_2/data/canneal_v1.csv"  # change depending on which machine is running train.py
 
-def get_default_config():
+def get_config(model=None, past_window=None, k_predictions=None):
     config = {
         "bpe_special_tokens": ["[UNK]"],  # Global, tokenizers specific
         "pad_token": "[PAD]",  # Global, tokenizers specific
@@ -67,10 +67,10 @@ def get_default_config():
         "preload": "latest",  # Global
         "tokenizer_files": "trained_tokenizers/tokenizer_{0}.json",  # Global
         "train_test_split": 0.75,  # Training hyperparameter
-        "attention_model": "transformer",  # Model hyperparameter, choose with "retnet"
+        "attention_model": "transformer" if model is None else model,  # Model hyperparameter, choose with "retnet"
         "attention_model_params": TransformerModelParams(),  # Model hyperparameter
-        "past_window": PAST_WINDOW,  # Model hyperparameter
-        "k_predictions": K_PREDICTIONS,  # Model hyperparameter
+        "past_window": PAST_WINDOW if past_window is None else past_window,  # Model hyperparameter
+        "k_predictions": K_PREDICTIONS if k_predictions is None else k_predictions,  # Model hyperparameter
         "input_features": INPUT_FEATURES,  # Model hyperparameter
         "output_features": OUTPUT_FEATURES,  # Model hyperparameter
         # With "concat_tokens", we tokenize each feature individually, pad the tokenized version (based on the max length observed over the data sets), increment token(feature_i) by sum_for_j<i(vocab_j), concat all tokenized_versions, embed the result concatenated tokenized version
@@ -111,20 +111,6 @@ def get_default_config():
     config["model_basename"] = model_name
     config["experiment_folder"] = "runs/"+model_name
 
-    return config
-
-
-def get_config(model_name=None, past_window=None, k_predictions=None):
-    config = get_default_config()
-    raise PermissionError
-    # @Thibault : ne fait pas ca dans cet ordre : tu bypass le code execute apres la creation du dict (e.g.: le compute du model_basename, qui deppend justement des valeurs que tu changes ci-dessous)
-    # Comme dit dans le comment de l'ancienne PR, il faudrait que get_default_config prenne ces arguments. Ou bien simplement bouger le code apres le dict dans get_config
-    if model_name is not None:
-        config["attention_model"] = model_name
-    if past_window is not None:
-        config["past_window"] = past_window
-    if k_predictions is not None:
-        config["k_predictions"] = k_predictions
     return config
 
 

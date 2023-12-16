@@ -309,3 +309,7 @@ class ConcatTokenizer:
             out_str = self.tokenizers[i].decode(tokenizer_list)
             ret.append(out_str)
         return ret
+
+    def pad(self, *args, **kwargs):
+        pass
+

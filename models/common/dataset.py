@@ -1,7 +1,6 @@
-import numpy as np
 import torch
 from torch.utils.data import Dataset
-from trained_tokenizers import special_tokenizers as st
+from models.common.trained_tokenizers import special_tokenizers as st
 
 
 class PageFaultDataset(Dataset):
