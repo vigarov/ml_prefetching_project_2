@@ -2,8 +2,8 @@ import torch
 import torch.nn as nn
 import math
 
-import models.retnet.retnet.configuration_retnet as RetNetConfig
-import models.retnet.retnet.modeling_retnet as RetNetForCausalLM
+from retnet.retnet import configuration_retnet as RetNetConfig
+from retnet.retnet import modeling_retnet as RetNetForCausalLM
 
 
 class LayerNormalization(nn.Module):
