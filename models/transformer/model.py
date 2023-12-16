@@ -213,21 +213,23 @@ class ProjectionLayer(nn.Module):
 
 class Transformer(nn.Module):
 
-    def __init__(self, encoder: TransformerEncoder, decoder: TransformerDecoder, src_embed: InputEmbeddings,
+    def __init__(self, encoder: TransformerEncoder, decoder: TransformerDecoder, src_embeds: nn.ModuleList, # list  of embeddings
                  tgt_embed: InputEmbeddings, src_pos: PositionalEncoding, tgt_pos: PositionalEncoding,
                  projection_layer: ProjectionLayer) -> None:
         super().__init__()
         self.encoder = encoder
         self.decoder = decoder
-        self.src_embed = src_embed
+        self.src_embeds = src_embeds
         self.tgt_embed = tgt_embed
         self.src_pos = src_pos
         self.tgt_pos = tgt_pos
         self.projection_layer = projection_layer
 
-    def encode(self, src, src_mask):
-        # (batch, seq_len, d_model)
-        src = self.src_embed(src)
+    def encode(self, src_list : torch.Tensor, src_mask: torch.Tensor):
+        # src_list is of size (B, K, I); where K is the length of the "list"
+        assert src_list.size(1) == len(self.src_embeds)
+        all_embeddings = [self.src_embeds[i](src_list[:,i,:]) for i in range(len(self.src_embeds))]
+        src = torch.hstack(all_embeddings)
         src = self.src_pos(src)
         return self.encoder(src, src_mask)
 
@@ -243,22 +245,31 @@ class Transformer(nn.Module):
 
 
 # Returns either Transformer or RetNet
-def build_model(config, in_vocab_size: int, out_vocab_size: int, pos_in_len: int, pos_out_len: int):
+def build_model(config, in_vocab_size: int | list[int], out_vocab_size: int, pos_in_len: int | list[int], pos_out_len: int):
     # TODO: some things hereunder might be Transformer specific, and might need to be factorized when we implement RetNet
     model_pms = config["attention_model_params"]
 
-    embedding_type = config["embedding_technique"]
+    emb_type = config["embedding_technique"]
     # Create the embedding layers, differently depending on the embedding_technique
-    if embedding_type != "meta_transformer":  # TODO: this will have to change if we decide to implement "embed_concat"
+    if emb_type in ["tok_concat","onetext"]:
         # We will use one embedding for the concatenated tokens (the concat of the tokens will be
         # done afterwards/in Dataset). Note: caller must set src_vocab_size and target_vocab_size accordingly
-        src_embed = InputEmbeddings(model_pms.d_model, in_vocab_size)
-        tgt_embed = InputEmbeddings(model_pms.d_model, out_vocab_size)
+        src_embeds = nn.ModuleList([InputEmbeddings(model_pms.d_model, in_vocab_size)])
     else:
-        raise NotImplementedError
+        assert emb_type in ["embed_concat","meta_transformer"]
+        assert type(in_vocab_size) == list and type(pos_in_len) == list
+        if emb_type == "embed_concat":
+            src_embeds = nn.ModuleList([InputEmbeddings(model_pms.d_model, voc_size) for voc_size in in_vocab_size])
+        else:
+            raise NotImplementedError
+
+        # "meta_transformer" and "embed_concat" also adds pos. encodings after the embedding, so all good
+        # (c.f. equation 7, section 3.3 of meta-transformer paper)
+        pos_in_len = sum(pos_in_len)
+
+    tgt_embed = InputEmbeddings(model_pms.d_model, out_vocab_size)
 
     # Create the positional encoding layers
-    # "meta_transformer" and "embed_concat" also adds pos. encodings after the embedding, so all good
     src_pos = PositionalEncoding(model_pms.d_model, pos_in_len, model_pms.dropout)
     tgt_pos = PositionalEncoding(model_pms.d_model, pos_out_len, model_pms.dropout)
 
@@ -305,7 +316,7 @@ def build_model(config, in_vocab_size: int, out_vocab_size: int, pos_in_len: int
 
     # Create the transformer
     if att_model == "transformer":
-        model = Transformer(encoder, decoder, src_embed, tgt_embed, src_pos, tgt_pos, projection_layer)
+        model = Transformer(encoder, decoder, src_embeds, tgt_embed, src_pos, tgt_pos, projection_layer)
     else:
         raise NotImplementedError
 
