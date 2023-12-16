@@ -269,7 +269,7 @@ class ConcatTokenizer:
         elif id == 1:
             return self.feature_separator_token
         else:
-            for i, s in self.vocab_cumsums:
+            for i, s in enumerate(self.vocab_cumsums):
                 if id_ < s:
                     return self.tokenizers[i - 1].id_to_token(id_)
             raise LookupError

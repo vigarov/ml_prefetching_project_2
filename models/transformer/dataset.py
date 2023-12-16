@@ -74,7 +74,7 @@ class PageFaultDataset(Dataset):
         # later, if we want to make this number a variable.
         decoder_input = torch.concat([
             torch.tensor([self.output_tokenizer.token_to_id(self.start_stop_generating_tokens[0])]),
-            tokenized_output
+            tokenized_output[:-1]
         ])  # size = O+1 = O'
 
         ground_truth = torch.concat([
@@ -83,6 +83,8 @@ class PageFaultDataset(Dataset):
             tokenized_output[right_index:-1] # Paddings
         ])  # size = O + 1 = O'
 
+        assert decoder_input.size() == ground_truth.size()
+
         # The encoder mask simply corresponds to all the tokenized input, that is not a padding token
         encoder_mask = tokenized_input != self.pad_token_ids[0]  # size = (I)
         # Resize for per Batch and per model step (c.f.: the decoder mask ; the encoder input will always stay the
@@ -90,22 +92,22 @@ class PageFaultDataset(Dataset):
         encoder_mask = encoder_mask.unsqueeze(0).unsqueeze(0).int()  # size (1,1,I)
         # The decode mask is all tokens which are not a padding, while not allowing the decoder to "look forward"
         # (--> progressively allow more of the input)
-        decoder_mask = (tokenized_output != self.pad_token_ids[1]).unsqueeze(0).int()  # size = (1,O')
-        progressive_mask = causal_mask(tokenized_output.size(0))  # size = (1, O', O')
+        decoder_mask = (decoder_input != self.pad_token_ids[1]).unsqueeze(0).int()  # size = (1,O')
+        progressive_mask = causal_mask(decoder_input.size(0))  # size = (1, O', O')
         decoder_mask = decoder_mask & progressive_mask  # size = (1, O') & (1, O', O') TODO = (1, O', O')  ?
 
         # For logging purpose, we also return the actual data, as text
         input_as_str = '\n'.join(raw_input)
-
-        return {
-            "encoder_input": tokenized_input,
-            "decoder_input": decoder_input,
-            "encoder_mask": encoder_mask,
-            "decoder_mask": decoder_mask,
-            "label": ground_truth,
+        return {                               # Sizes
+            "encoder_input": tokenized_input,  # I
+            "encoder_mask": encoder_mask,      # (1,1,I)
+            "decoder_input": decoder_input,    # O'
+            "decoder_mask": decoder_mask,      # (1,O',O')
+            "label": ground_truth,             # O'
             "src_text": input_as_str,
             "tgt_text": raw_output
         }
+
 
 
 def causal_mask(size):

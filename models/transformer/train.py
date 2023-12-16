@@ -176,7 +176,7 @@ def get_tokenizers(config) -> ((st.ConcatTokenizer | list[st.TokenizerWrapper]),
         ret_dict = {}
         for feature in features:
             sentence_like_wrap_mode = None
-            if feature.name == "pref_pfaults":
+            if feature.name == "prev_faults":
                 sentence_like_wrap_mode = "insert_lr"
             ret_dict[feature.name] = get_feature_tokenizer(tok_file, feature, padder=all_padders,
                                                            sentence_like_wrap_mode=sentence_like_wrap_mode)
@@ -379,19 +379,19 @@ def train_model(config):
         model.train()
         batch_iterator = tqdm(train_dataloader, desc=f"Processing Epoch {epoch:02d}")
         for batch in batch_iterator:
-            encoder_input = batch['encoder_input'].to(device)  # (b, seq_len)
-            decoder_input = batch['decoder_input'].to(device)  # (B, seq_len)
-            encoder_mask = batch['encoder_mask'].to(device)  # (B, 1, 1, seq_len)
-            decoder_mask = batch['decoder_mask'].to(device)  # (B, 1, seq_len, seq_len)
+            encoder_input = batch['encoder_input'].to(device)  # (B, I)
+            decoder_input = batch['decoder_input'].to(device)  # (B, O')
+            encoder_mask = batch['encoder_mask'].to(device)  # (B, 1, 1, I)
+            decoder_mask = batch['decoder_mask'].to(device)  # (B, 1, O', O')
 
             # Run the tensors through the encoder, decoder and the projection layer
-            encoder_output = model.encode(encoder_input, encoder_mask)  # (B, seq_len, d_model)
+            encoder_output = model.encode(encoder_input, encoder_mask)  # (B, I, D)
             decoder_output = model.decode(encoder_output, encoder_mask, decoder_input,
-                                          decoder_mask)  # (B, seq_len, d_model)
-            proj_output = model.project(decoder_output)  # (B, seq_len, vocab_size)
+                                          decoder_mask)  # (B, O', D)
+            proj_output = model.project(decoder_output)  # (B, O', D)
 
             # Compare the output with the label
-            label = batch['label'].to(device)  # (B, seq_len)
+            label = batch['label'].to(device)  # (B, O')
 
             # Compute the loss using a simple cross entropy
             loss = loss_fn(proj_output.view(-1, tokenizer_tgt.get_vocab_size()), label.view(-1))

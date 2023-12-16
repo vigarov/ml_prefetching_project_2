@@ -29,16 +29,17 @@ FORCE_BYTE = True
 #             ip, 16, similar as prev_pfaults, but no array-> no mult
 #             ustack, don't know yet, use big value for now TODO
 #             regs, #regs*len_max_reg_value_in_chosen_base = 20 * (16 + 1 ("0x")) + (20-1) = 20 * (8+1) + 2 if FORCE_BYTE
-# output's lengths will be +2 because of SOS/EOS tokens
+# prev_faults's lengths will be +2 because of SOS/EOS tokens
+# output +1 only since we either have SOS (decoder input) or EOS (decoder ground truth)
 
 HEX_64_LEN = (8 if FORCE_BYTE else 16) + 1  # 1 for "0x"
 
-INPUT_FEATURES = [Feature("prev_faults", "hex_address_list",PAST_WINDOW*(HEX_64_LEN+1) - 1),
+INPUT_FEATURES = [Feature("prev_faults", "hex_address_list",PAST_WINDOW*(HEX_64_LEN+1) - 1+2),
                   Feature("flags", "bitmap",18),
                   Feature("ip", "hex_address",HEX_64_LEN+2),
                   #Feature("ustack", "text",2048), # Commnent if not running on `gpu`, as you'll likely run OOM
                   Feature("regs", "hex_number_list",20*(HEX_64_LEN+1)-1)]
-OUTPUT_FEATURES = [Feature("y", "hex_address_list",K_PREDICTIONS*(HEX_64_LEN+1)-1 + 2)]
+OUTPUT_FEATURES = [Feature("y", "hex_address_list",K_PREDICTIONS*(HEX_64_LEN+1)-1 + 1)]
 
 @dataclass
 class TransformerModelParams:
