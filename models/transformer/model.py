@@ -225,11 +225,11 @@ class Transformer(nn.Module):
         self.tgt_pos = tgt_pos
         self.projection_layer = projection_layer
 
-    def encode(self, src_list : torch.Tensor, src_mask: torch.Tensor):
+    def encode(self, src_list : list[torch.Tensor], src_mask: torch.Tensor):
         # src_list is of size (B, K, I); where K is the length of the "list"
-        assert src_list.size(1) == len(self.src_embeds)
-        all_embeddings = [self.src_embeds[i](src_list[:,i,:]) for i in range(len(self.src_embeds))]
-        src = torch.hstack(all_embeddings)
+        assert len(src_list) == len(self.src_embeds)
+        all_embeddings = [embedder(tokens) for embedder,tokens in zip(self.src_embeds,src_list)]
+        src = torch.hstack(all_embeddings)  # Concat embedding
         src = self.src_pos(src)
         return self.encoder(src, src_mask)
 

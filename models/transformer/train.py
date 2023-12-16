@@ -21,8 +21,6 @@ from pathlib import Path
 from pandas import read_csv
 
 from tokenizers import Tokenizer
-from tokenizers.models import BPE
-from tokenizers.pre_tokenizers import Whitespace
 
 from trained_tokenizers import special_tokenizers as st
 
@@ -31,16 +29,17 @@ from torch.utils.tensorboard import SummaryWriter
 
 
 def greedy_decode(model,
-                  source_data, source_mask,
+                  source_data_list: list[torch.Tensor],
+                  source_mask,
                   tokenizer_tgt: st.TokenizerWrapper, start_stop_tokens: list,
                   max_len, device):
     assert start_stop_tokens is not None and len(start_stop_tokens) == 2
     start_idx, end_idx = tokenizer_tgt.token_to_id(start_stop_tokens[0]), tokenizer_tgt.token_to_id(
         start_stop_tokens[1])
     # Precompute the encoder output and reuse it for every step
-    encoder_output = model.encode(source_data, source_mask)
+    encoder_output = model.encode(source_data_list, source_mask)
     # Initialize the decoder input with the sos token
-    decoder_input = torch.empty(1, 1).fill_(start_idx).type_as(source_data).to(device)
+    decoder_input = torch.empty(1, 1).fill_(start_idx).type_as(source_data_list[0]).to(device)
     while True:
         if decoder_input.size(1) == max_len:
             break
@@ -55,7 +54,7 @@ def greedy_decode(model,
         prob = model.project(out[:, -1])
         _, next_token = torch.max(prob, dim=1)  # Greedy
         decoder_input = torch.cat(
-            [decoder_input, torch.empty(1, 1).type_as(source_data).fill_(next_token.item()).to(device)], dim=1
+            [decoder_input, torch.empty(1, 1).type_as(source_data_list[0]).fill_(next_token.item()).to(device)], dim=1
         )
 
         if next_token == end_idx:
@@ -86,13 +85,14 @@ def run_validation(model, validation_ds: DataLoader,
     with torch.no_grad():
         for batch in validation_ds:
             count += 1
-            encoder_input = batch["encoder_input"].to(device)  # (b, I)
+            encoder_input_list = batch["encoder_input"]  # [(b, I)]
+            encoder_input_list = [t.to(device) for t in encoder_input_list]
             encoder_mask = batch["encoder_mask"].to(device)  # (b, 1, 1, I)
 
             # check that the batch size is 1
-            assert encoder_input.size(0) == 1, "Batch size must be 1 for validation"
+            assert encoder_input_list[0].size(0) == 1, "Batch size must be 1 for validation"
 
-            model_out = greedy_decode(model, encoder_input, encoder_mask, tokenizer_tgt, start_stop_tokens, max_len,
+            model_out = greedy_decode(model, encoder_input_list, encoder_mask, tokenizer_tgt, start_stop_tokens, max_len,
                                       device)
 
             source_text = batch["src_text"][0]
@@ -384,29 +384,41 @@ def train_model(config):
     else:
         print('No model to preload, starting from scratch')
 
-    embedding_type = config["embedding_technique"]
-    if embedding_type in ["meta_transformer", "embed_concat"]:
-        # TODO: one loss per embedding layer? imo yes
-        raise NotImplementedError
+    emb_type = config["embedding_technique"]
+    pad_token = config["pad_token"]
+    if emb_type in ["meta_transformer", "embed_concat"]:
+        assert type(tokenizer_src) == list
+        input_pad_ids = [tok.token_to_id(pad_token) for tok in tokenizer_src]
+        input_pad_id = input_pad_ids[0]
+        for ipi in input_pad_ids:
+            assert ipi == input_pad_id
+    elif emb_type == "tok_concat":
+        assert type(tokenizer_src) == st.ConcatTokenizer
+        input_src_potential_pad_ids = tokenizer_src.token_to_id(pad_token)
+        assert len(input_src_potential_pad_ids) == 1
+        input_pad_id = input_src_potential_pad_ids[0]
     else:
-        input_src_potential_pad_ids = tokenizer_src.token_to_id(config["pad_token"])
-        output_pad_id = tokenizer_tgt.token_to_id(config["pad_token"])
-        assert len(input_src_potential_pad_ids) == 1 and input_src_potential_pad_ids[0] == output_pad_id
-        loss_fn = nn.CrossEntropyLoss(ignore_index=output_pad_id,
-                                      label_smoothing=0.1).to(device)
+        assert emb_type == "onetext"
+        raise NotImplementedError
 
+    output_pad_id = tokenizer_tgt.token_to_id(config["pad_token"])
+    assert input_pad_id == output_pad_id
+
+    loss_fn = nn.CrossEntropyLoss(ignore_index=output_pad_id,
+                                  label_smoothing=0.1).to(device)
 
     for epoch in range(initial_epoch, config['num_epochs']):
         torch.cuda.empty_cache()
         model.train()
         batch_iterator = tqdm(train_dataloader, desc=f"Processing Epoch {epoch:02d}")
         for batch in batch_iterator:
-            encoder_input = batch['encoder_input'].to(device)  # (B, 1, I), or (B,K,I) (see dataset.py). The second dimension will be reduced.
+            encoder_input_list = batch['encoder_input']  # [(B, I)]
+            encoder_input_list = [t.to(device) for t in encoder_input_list]
             decoder_input = batch['decoder_input'].to(device)  # (B, O')
             encoder_mask = batch['encoder_mask'].to(device)  # (B, 1, 1, I)
             decoder_mask = batch['decoder_mask'].to(device)  # (B, 1, O', O')
             # Run the tensors through the encoder, decoder and the projection layer
-            encoder_output = model.encode(encoder_input, encoder_mask)  # (B, I, D)
+            encoder_output = model.encode(encoder_input_list, encoder_mask)  # (B, I, D)
             decoder_output = model.decode(encoder_output, encoder_mask, decoder_input,
                                           decoder_mask)  # (B, O', D)
             proj_output = model.project(decoder_output)  # (B, O', D)

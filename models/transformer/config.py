@@ -76,7 +76,7 @@ def get_config():
         # With "onetext" treat all the features as one text (use specifc text tokenizer), add SOS/TOS?, embed
         # With "meta_transformer", tokenize each feature, pad as with concat, instead of embedding, throw in transformer
         # With "embed_concat", we embed each feature independently of each other, then concatenate the embeddings
-        "embedding_technique": "tok_concat"  # Model hyperparameter, choose with "onetext", "meta_transformer", "embed_concat"
+        "embedding_technique": "embed_concat"  # Model hyperparameter, choose with "onetext", "meta_transformer", "embed_concat"
     }
 
     max_path = None

@@ -100,17 +100,17 @@ class PageFaultDataset(Dataset):
             tokenized_input = torch.tensor(tokenized_input, dtype=torch.int64)  # size = (I)
             # The encoder mask simply corresponds to all the tokenized input, that is not a padding token
             encoder_mask = tokenized_input != self.pad_token_ids[0]  # size = (I)
-            tokenized_input = tokenized_input.unsqueeze(0) # size = (1,I)
+            tokenized_input = [tokenized_input]  # size = [(I)]
         else:
             assert self.embedding_type in ["meta_transformer", "embed_concat"]
-            assert type(self.input_tokenizer) == list[st.TokenizerWrapper]
+            assert type(self.input_tokenizer) == list  # [st.TokenizerWrapper]
             assert len(self.input_tokenizer) == len(raw_input)
-            tokenized_input_list: list[torch.Tensor] = [torch.Tensor(tok_i.encode(inp_i).ids,dtype=torch.int64) for inp_i, tok_i in zip(raw_input, self.input_tokenizer)]
+            tokenized_input_list: list[torch.Tensor] = [torch.tensor(tok_i.encode(inp_i).ids, dtype=torch.int64) for inp_i, tok_i in zip(raw_input, self.input_tokenizer)]
             # Important Note: the encoder_mask is applied *after* the concatenation of the embeddings (if embed_concat/meta_transformer)
             # --> we don't need to add yet another artificial dimension
             # Note2: PyCharm's warning below is straight up wrong - we are definitely inputting a list of Tensors
             encoder_mask = torch.hstack([tok_i != self.pad_token_ids[0] for tok_i in tokenized_input_list])
-            tokenized_input = torch.stack(tokenized_input_list)
+            tokenized_input = tokenized_input_list
 
         # Resize for per Batch and per model step (c.f.: the decoder mask ; the encoder input will always stay the
         # same while the decoder is progressively allowed through) # TODO not entirely sure of the second "per" here
@@ -121,8 +121,8 @@ class PageFaultDataset(Dataset):
         return {                               # Sizes     Empty = Unchanged from Left
                                                #                K - features
                                                # Concat      //  Embed-Meta  // OneText
-            "encoder_input": tokenized_input,  # (1,I)              (K,I)
-            "encoder_mask": encoder_mask,      # (1,1,I)           (1,1,I)
+            "encoder_input": tokenized_input,  # (I)              [(I')]
+            "encoder_mask": encoder_mask,      # (1,1,I)          (1,1,I)
             "decoder_input": decoder_input,    # O'
             "decoder_mask": decoder_mask,      # (1,O',O')
             "label": ground_truth,             # O'
