@@ -2,8 +2,8 @@ import torch
 import torch.nn as nn
 import math
 
-import models.retnet.retnet.configuration_retnet as RetNetConfig
-import models.retnet.retnet.modeling_retnet as RetNetForCausalLM
+from retnet.retnet import configuration_retnet as RetNetConfig
+from retnet.retnet import modeling_retnet as RetNetForCausalLM
 
 
 class LayerNormalization(nn.Module):
@@ -235,10 +235,10 @@ class Transformer(nn.Module):
         return self.encoder(src, src_mask)
 
     def decode(self, encoder_output: torch.Tensor, src_mask: torch.Tensor, tgt: torch.Tensor, tgt_mask: torch.Tensor):
-        # (batch, seq_len, d_model)
-        tgt = self.tgt_embed(tgt)
-        tgt = self.tgt_pos(tgt)
-        return self.decoder(tgt, encoder_output, src_mask, tgt_mask)
+        # (B, O', D)
+        embeds = self.tgt_embed(tgt)
+        pos = self.tgt_pos(embeds)
+        return self.decoder(pos, encoder_output, src_mask, tgt_mask)
 
     def project(self, x):
         # (batch, seq_len, vocab_size)

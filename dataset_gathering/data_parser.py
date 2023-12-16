@@ -23,10 +23,11 @@ RAW_DATA_PATH = "/home/vigarov/ml_prefetching_project_2/data/raw/correct_out_3.t
 PREPROCESS_SAVE_PATH = "/home/vigarov/ml_prefetching_project_2/data/prepro/" 
 
 PREPRO_VERSION = 1.1
-PRO_VERSION = 1.2
+PRO_VERSION = 1.4
 
 
-def preprocess(save=True):
+def preprocess(path=RAW_DATA_PATH,save=True):
+    assert "raw" in Path(path).absolute().as_posix()
     df = DataFrame.from_dict(load_json(RAW_DATA_PATH))
     BENCH_NAME = "canneal"
     if save:
@@ -35,10 +36,13 @@ def preprocess(save=True):
         return df
 
 
-def process(source_window,pred_window,preprocessed_file,save = True):
+def process(preprocessed_file,source_window,pred_window,save = False):
     p = Path(preprocessed_file)
     assert p.exists() and p.is_file() and p.suffix == ".csv"
-    df = read_csv(preprocessed_file)
+    if "prepro" in p.absolute().as_posix():
+        df = read_csv(preprocessed_file)
+    else:
+        df = preprocess(preprocessed_file,save=False)
     y = []
 
     # Build history
@@ -49,9 +53,9 @@ def process(source_window,pred_window,preprocessed_file,save = True):
         df["address"][i] = " ".join(running_past_window.copy())
         n_th_next_fault = hex(df["address"][i+pred_window])
         y.append(" ".join(running_future_window.copy()))
-        running_past_window.pop()
+        running_past_window.pop(0)
         running_past_window.append(fault_address)
-        running_future_window.pop()
+        running_future_window.pop(0)
         running_future_window.append(n_th_next_fault)
     
     # Drop unused/useless entries = first "source window" ones which don't have enough history, and last "pred_window" ones, which have no predictions
@@ -63,9 +67,8 @@ def process(source_window,pred_window,preprocessed_file,save = True):
 
     df["ip"] = df["ip"].apply(lambda ip_int: hex(ip_int)) 
     df["ustack"] = df["ustack"].apply(lambda ustack_str: ustack_str.replace('"','').strip())
-    df["regs"] = df["regs"].apply(lambda regs_array: ' '.join([str(reg) for reg in ast.literal_eval(regs_array.replace('"',''))]))
+    df["regs"] = df["regs"].apply(lambda regs_array: ' '.join(["0x"+hex(reg)[2:].zfill(2) for reg in ast.literal_eval(regs_array.replace('"',''))])) #have regs in hex, makes more sense and reduces input size/dimension post tokenization
     df["flags"] = df["flags"].apply(lambda flag: format(flag,"016b")) # flags are bitmaps,  might be easier to interpret if we spell them out as such
-    # Added space at the end because otherwise huggingface's `tokenizer` treat this as a number..., yielding an error
 
     # Drop first column = index added by preprocessor
     df = df.drop(columns=df.columns[[0]])
@@ -79,4 +82,4 @@ def process(source_window,pred_window,preprocessed_file,save = True):
 
 
 if __name__ == "__main__":
-    process(2,10,"/home/vigarov/ml_prefetching_project_2/data/prepro/canneal_v1.1.csv",save=True)
+    process("/home/vigarov/ml_prefetching_project_2/data/prepro/canneal_v1.1.csv",10,10,save=True)
