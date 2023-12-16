@@ -144,7 +144,9 @@ def run_validation(model, validation_ds: DataLoader,
 
 def get_tokenizers(config) -> ((st.ConcatTokenizer | list[st.TokenizerWrapper]), st.TokenizerWrapper):
     SPACE_SPLITTER = st.Splitter(lambda input_str: input_str.split(), config["list_elem_separation_token"])
-
+    HEX_VOCAB = ["0x"] + [hex(j)[2:].zfill(2) for j in range(0xff + 1)]
+    HEX_ADDRESS_SPLITTER = st.Splitter(lambda address: [address[i:i + 2] for i in range(0, len(address), 2)])
+    SPECIAL_TOKENS = config["bpe_special_tokens"]
     def get_feature_tokenizer(tok_file: str, feature: Feature, padder=False,
                               sentence_like_wrap_mode: str | None = None) -> st.TokenizerWrapper:
         is_list = "list" in feature.type
@@ -188,15 +190,21 @@ def get_tokenizers(config) -> ((st.ConcatTokenizer | list[st.TokenizerWrapper]),
     token_type = config["embedding_technique"]
     tok_file = config['tokenizer_files']
     input_features, output_features = config["input_features"], config["output_features"]
-    assert len(output_features) == 1
+    assert len(output_features) == 1 and "list" in output_features[0].feature_type
     # To build the tokenizers, see make_tokens.py
-    out_tokenizer = get_feature_tokenizer(tok_file, output_features[0], padder=True,
+    if token_type == "concat_tokens":
+        out_tokenizer = get_feature_tokenizer(tok_file, output_features[0], padder=True,
                                           sentence_like_wrap_mode="no_insert_get_right_index")
-
+    else:
+        out_tokenizer = st.TokenizerWrapper(
+            st.SimpleCustomVocabTokenizer(HEX_VOCAB,SPECIAL_TOKENS,HEX_ADDRESS_SPLITTER),
+            len(SPECIAL_TOKENS),
+            output_features[0].max_len,
+            SPACE_SPLITTER
+        )
     if token_type in ["concat_tokens", "hextet_concat"]:
         inp_ret_dict = get_feature_tokenizer_dict(tok_file, input_features, all_padders=False)
         if token_type == "hextet_concat":
-            SPECIAL_TOKENS = config["bpe_special_tokens"]
             for feature in input_features:
                 prim_feature_type = feature.get_primitive_type()
                 is_list = "list" in feature.type
@@ -205,10 +213,9 @@ def get_tokenizers(config) -> ((st.ConcatTokenizer | list[st.TokenizerWrapper]),
                     splitter = SPACE_SPLITTER
                 if "hex" in prim_feature_type or "bit" in prim_feature_type:
                     if "hex" in prim_feature_type:
-                        custom_vocab = ["0x"] + [hex(j)[2:].zfill(2) for j in range(0xff + 1)]
+                        custom_vocab = HEX_VOCAB
                         if "number" not in prim_feature_type:
-                            input_splitter = st.Splitter(
-                                lambda address: [address[i:i + 2] for i in range(0, len(address), 2)])
+                            input_splitter = HEX_ADDRESS_SPLITTER
                         else:
                             # our input is going to be either 0x{2*N} or 0x{2*N+1}
                             # In the first case, no problem. In the second case however, we must add a zero after the 0x
@@ -219,6 +226,7 @@ def get_tokenizers(config) -> ((st.ConcatTokenizer | list[st.TokenizerWrapper]),
                     else:  # "bit" in prim_feature_type
                         custom_vocab = ['0', '1']
                         input_splitter = st.Splitter(lambda bitmap: [bitmap[i] for i in range(len(bitmap))])
+
                     inp_ret_dict[feature.name] = st.TokenizerWrapper(
                         st.SimpleCustomVocabTokenizer(custom_vocab, SPECIAL_TOKENS, input_splitter=input_splitter),
                         len(SPECIAL_TOKENS),
@@ -374,6 +382,8 @@ def train_model(config):
         loss_fn = nn.CrossEntropyLoss(ignore_index=output_pad_id,
                                       label_smoothing=0.1).to(device)
 
+    DEBUG = True
+
     for epoch in range(initial_epoch, config['num_epochs']):
         torch.cuda.empty_cache()
         model.train()
@@ -383,7 +393,8 @@ def train_model(config):
             decoder_input = batch['decoder_input'].to(device)  # (B, O')
             encoder_mask = batch['encoder_mask'].to(device)  # (B, 1, 1, I)
             decoder_mask = batch['decoder_mask'].to(device)  # (B, 1, O', O')
-
+            if DEBUG:
+                print(tokenizer_tgt.decode(st.SimpleTokenIdList(decoder_input[0,:].clone().cpu())))
             # Run the tensors through the encoder, decoder and the projection layer
             encoder_output = model.encode(encoder_input, encoder_mask)  # (B, I, D)
             decoder_output = model.decode(encoder_output, encoder_mask, decoder_input,
