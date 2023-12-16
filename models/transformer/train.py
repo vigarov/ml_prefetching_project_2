@@ -1,19 +1,13 @@
-import copy
-from dataclasses import dataclass
-
 from trained_tokenizers.special_tokenizers import SimpleTokenIdList
 
 from model import build_model
-from dataset import PageFaultDataset, causal_mask
-from config import get_config, get_weights_file_path, latest_weights_file_path, source_model_files, get_model_full_path, \
+from models.common.config import get_config, get_weights_file_path, latest_weights_file_path, source_model_files, get_model_full_path, \
     SEED_FN, STATE_FN, GENERATOR_PREFIX, Feature
+from models.common.dataset import PageFaultDataset,causal_mask
 
-import torchtext.datasets as datasets
-import torch
 import torch.nn as nn
-from torch.utils.data import Dataset, DataLoader, random_split
-from torch.optim.lr_scheduler import LambdaLR
-from data_parser import *
+from torch.utils.data import DataLoader, random_split
+from models.common.data_parser import *
 import warnings
 from tqdm import tqdm
 import os
@@ -28,7 +22,6 @@ from trained_tokenizers import special_tokenizers as st
 
 import torchmetrics
 from torch.utils.tensorboard import SummaryWriter
-
 
 def greedy_decode(model,
                   source_data, source_mask,
@@ -267,9 +260,10 @@ def get_ds(config, generator) -> (
     # Build tokenizers
     src_tokenizer, tgt_tokenizer = get_tokenizers(config)
 
-    train_tensor_size = int(config["train_test_split"] * len(df_raw))
-    indices = torch.arange(
-        len(df_raw))  # torch.randperm(len(df_raw), generator=generator)  # TODO think about overlapping pfault windows
+    # Keep 90% for training, 10% for validation
+    train_ds_size = int(config['train_test_split'] * len(ds_raw))
+    val_ds_size = len(ds_raw) - train_ds_size
+    train_ds_raw, val_ds_raw = random_split(ds_raw, [train_ds_size, val_ds_size])
 
     train_ds = PageFaultDataset(config, df_raw, indices[:train_tensor_size],
                                 src_tokenizer,
@@ -435,7 +429,12 @@ def train_model(config):
             'optimizer_state_dict': optimizer.state_dict(),
             'global_step': global_step
         }, model_filename)
+    return model
 
+def multi_config_train():
+    configs = get_all_configs()
+    for c in configs:
+        train_model(c)
 
 if __name__ == '__main__':
     warnings.filterwarnings("ignore")

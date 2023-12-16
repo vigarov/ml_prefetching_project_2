@@ -2,11 +2,10 @@ from pathlib import Path
 from dataclasses import dataclass
 import re
 
-DATA_PATH = "data/prepro/"
+DATA_PATH = "../transformer/data/processed/"
 GENERATOR_PREFIX = "gen"
 SEED_FN = "rand_seed.pt"
 STATE_FN = "state.pt"
-
 
 
 @dataclass
@@ -49,8 +48,11 @@ class TransformerModelParams:
     H: int = 8  # Num Attention heads per Transformer layer
     dropout: float = 0.1
     d_ff: int = 2048
+import torch
 
-def get_config():
+DATASET_PATH = "/home/garvalov/ml_prefetching_project_2/data/canneal_v1.csv"  # change depending on which machine is running train.py
+
+def get_default_config():
     config = {
         "bpe_special_tokens": ["[UNK]"],  # Global, tokenizers specific
         "pad_token": "[PAD]",  # Global, tokenizers specific
@@ -66,7 +68,7 @@ def get_config():
         "tokenizer_files": "trained_tokenizers/tokenizer_{0}.json",  # Global
         "train_test_split": 0.75,  # Training hyperparameter
         "attention_model": "transformer",  # Model hyperparameter, choose with "retnet"
-        "attention_model_params" : TransformerModelParams(),  # Model hyperparameter
+        "attention_model_params": TransformerModelParams(),  # Model hyperparameter
         "past_window": PAST_WINDOW,  # Model hyperparameter
         "k_predictions": K_PREDICTIONS,  # Model hyperparameter
         "input_features": INPUT_FEATURES,  # Model hyperparameter
@@ -76,7 +78,8 @@ def get_config():
         # With "onetext" treat all the features as one text (use specifc text tokenizer), add SOS/TOS?, embed
         # With "meta_transformer", tokenize each feature, pad as with concat, instead of embedding, throw in transformer
         # With "embed_concat", we embed each feature independently of each other, then concatenate the embeddings
-        "embedding_technique": "hextet_concat"  # Model hyperparameter, choose with "concat_tokens","hextet_concat", "onetext", "meta_transofrmer", "embed_concat"
+        "embedding_technique": "hextet_concat",  # Model hyperparameter, choose with "concat_tokens","hextet_concat", "onetext", "meta_transofrmer", "embed_concat"
+        "model_size": "300m"  # Model hyperparameter if retnet, choose with "300m", "1.5b" TODO: this should be either part of the RetNetConfig, or even better, make a RetNetModelParams class as above
     }
 
     max_path = None
@@ -111,6 +114,30 @@ def get_config():
     return config
 
 
+def get_config(model_name=None, past_window=None, k_predictions=None):
+    config = get_default_config()
+    raise PermissionError
+    # @Thibault : ne fait pas ca dans cet ordre : tu bypass le code execute apres la creation du dict (e.g.: le compute du model_basename, qui deppend justement des valeurs que tu changes ci-dessous)
+    # Comme dit dans le comment de l'ancienne PR, il faudrait que get_default_config prenne ces arguments. Ou bien simplement bouger le code apres le dict dans get_config
+    if model_name is not None:
+        config["attention_model"] = model_name
+    if past_window is not None:
+        config["past_window"] = past_window
+    if k_predictions is not None:
+        config["k_predictions"] = k_predictions
+    return config
+
+
+def get_all_configs():
+    configs = []
+    for model_name in ["transformer", "retnet"]:
+        for k_predictions in [1, 5, 10, 15, 20]:
+            for past_window in [10, 16, 32, 64, 512, 1024]:
+                config = get_config(model_name, past_window, k_predictions)
+                configs.append(config)
+    return configs
+
+
 def get_model_full_path(config):
     return f"trainings/{config['datasource']}/{config['model_basename']}/"
 
@@ -132,3 +159,20 @@ def latest_weights_file_path(config):
         return None
     weights_files.sort()
     return str(weights_files[-1])
+
+
+def get_device():
+    device = "cuda" if torch.cuda.is_available() else "mps" if torch.has_mps or torch.backends.mps.is_available() else "cpu"
+    print("Using device:", device)
+    if (device == 'cuda'):
+        print(f"Device name: {torch.cuda.get_device_name(device.index)}")
+        print(f"Device memory: {torch.cuda.get_device_properties(device.index).total_memory / 1024 ** 3} GB")
+    elif (device == 'mps'):
+        print(f"Device name: <mps>")
+    else:
+        print("NOTE: If you have a GPU, consider using it for training.")
+        print(
+            "      On a Windows machine with NVidia GPU, check this video: https://www.youtube.com/watch?v=GMSjDTU8Zlc")
+        print(
+            "      On a Mac machine, run: pip3 install --pre torch torchvision torchaudio torchtext --index-url https://download.pytorch.org/whl/nightly/cpu")
+    return torch.device(device)

@@ -2,6 +2,9 @@ import torch
 import torch.nn as nn
 import math
 
+import models.retnet.retnet.configuration_retnet as RetNetConfig
+import models.retnet.retnet.modeling_retnet as RetNetForCausalLM
+
 
 class LayerNormalization(nn.Module):
 
@@ -242,72 +245,70 @@ class Transformer(nn.Module):
         return self.projection_layer(x)
 
 
-# Returns either Transformer or RetNet
+# Returns either Transformer or retnet
 def build_model(config, in_vocab_size: int, out_vocab_size: int, pos_in_len: int, pos_out_len: int):
-    # TODO: some things hereunder might be Transformer specific, and might need to be factorized when we implement RetNet
+    # TODO: some things hereunder might be Transformer specific, and might need to be factorized when we implement retnet
     model_pms = config["attention_model_params"]
-
-    embedding_type = config["embedding_technique"]
-    # Create the embedding layers, differently depending on the embedding_technique
-    if embedding_type != "meta_transformer":  # TODO: this will have to change if we decide to implement "embed_concat"
-        # We will use one embedding for the concatenated tokens (the concat of the tokens will be
-        # done afterwards/in Dataset). Note: caller must set src_vocab_size and target_vocab_size accordingly
-        src_embed = InputEmbeddings(model_pms.d_model, in_vocab_size)
-        tgt_embed = InputEmbeddings(model_pms.d_model, out_vocab_size)
-    else:
-        raise NotImplementedError
-
-    # Create the positional encoding layers
-    # "meta_transformer" and "embed_concat" also adds pos. encodings after the embedding, so all good
-    src_pos = PositionalEncoding(model_pms.d_model, pos_in_len, model_pms.dropout)
-    tgt_pos = PositionalEncoding(model_pms.d_model, pos_out_len, model_pms.dropout)
-
     att_model = config["attention_model"]
-    # Create the encoder blocks
-    encoder_blocks = []
-    for _ in range(model_pms.T):
-        if att_model == "transformer":
-            encoder_self_attention_block = MultiHeadAttentionBlock(model_pms.d_model, model_pms.H, model_pms.dropout)
+
+    if att_model == "transformer":
+        embedding_type = config["embedding_technique"]
+        # Create the embedding layers, differently depending on the embedding_technique
+        if embedding_type != "meta_transformer":  # TODO: this will have to change if we decide to implement "embed_concat"
+            # We will use one embedding for the concatenated tokens (the concat of the tokens will be
+            # done afterwards/in Dataset). Note: caller must set src_vocab_size and target_vocab_size accordingly
+            src_embed = InputEmbeddings(model_pms.d_model, in_vocab_size)
+            tgt_embed = InputEmbeddings(model_pms.d_model, out_vocab_size)
+        else:
+            raise NotImplementedError
+
+        src_pos = PositionalEncoding(model_pms.d_model, pos_in_len, model_pms.dropout)
+        tgt_pos = PositionalEncoding(model_pms.d_model, pos_out_len, model_pms.dropout)
+
+        # Create the positional encoding layers
+        # "meta_transformer" and "embed_concat" if we implement it also adds pos. encodings after the embedding, so no worries
+
+        # Create the encoder blocks
+        encoder_blocks = []
+        for _ in range(model_pms.T):
+            encoder_self_attention_block = MultiHeadAttentionBlock(model_pms.d_model, model_pms.H,
+                                                                   model_pms.dropout)
             feed_forward_block = FeedForwardBlock(model_pms.d_model, model_pms.d_ff, model_pms.dropout)
             encoder_block = EncoderBlock(model_pms.d_model, encoder_self_attention_block, feed_forward_block,
                                          model_pms.dropout)
-        else:
-            assert att_model == "retnet"
-            raise NotImplementedError
-        encoder_blocks.append(encoder_block)
+            encoder_blocks.append(encoder_block)
 
-    # Create the decoder blocks
-    decoder_blocks = []
-    for _ in range(model_pms.T):
-        if att_model == "transformer":
-            decoder_self_attention_block = MultiHeadAttentionBlock(model_pms.d_model, model_pms.H, model_pms.dropout)
-            decoder_cross_attention_block = MultiHeadAttentionBlock(model_pms.d_model, model_pms.H, model_pms.dropout)
+        # Create the decoder blocks
+        decoder_blocks = []
+        for _ in range(model_pms.T):
+            decoder_self_attention_block = MultiHeadAttentionBlock(model_pms.d_model, model_pms.H,
+                                                                   model_pms.dropout)
+            decoder_cross_attention_block = MultiHeadAttentionBlock(model_pms.d_model, model_pms.H,
+                                                                    model_pms.dropout)
             feed_forward_block = FeedForwardBlock(model_pms.d_model, model_pms.d_ff, model_pms.dropout)
             decoder_block = TransformerDecoderBlock(model_pms.d_model, decoder_self_attention_block,
                                                     decoder_cross_attention_block, feed_forward_block,
                                                     model_pms.dropout)
-        else:
-            raise NotImplementedError
-        decoder_blocks.append(decoder_block)
+            decoder_blocks.append(decoder_block)
 
-    # Create the encoder and decoder
-    if att_model == "transformer":
+        # Create the encoder and decoder
         encoder = TransformerEncoder(model_pms.d_model, nn.ModuleList(encoder_blocks))
         decoder = TransformerDecoder(model_pms.d_model, nn.ModuleList(decoder_blocks))
-    else:
-        raise NotImplementedError
 
-    # Create the projection layer
-    if att_model == "transformer":
+        # Create the projection layer
         projection_layer = ProjectionLayer(model_pms.d_model, out_vocab_size)
-    else:
-        raise NotImplementedError
 
-    # Create the transformer
-    if att_model == "transformer":
+        # Create the transformer
         model = Transformer(encoder, decoder, src_embed, tgt_embed, src_pos, tgt_pos, projection_layer)
+
     else:
-        raise NotImplementedError
+        conf = RetNetConfig.load_config_from_json(f"configs/retnet-{config['model_size']}/config.json")
+        conf.vocab_size = in_vocab_size
+        conf.decoder_vocab_size = out_vocab_size
+        conf.decoder_embed_dim = model_pms.d_model
+        conf.decoder_retention_heads = model_pms.H  #TODO is it the same?
+        conf.dropout = model_pms.dropout
+        model = RetNetForCausalLM.RetNetForCausalLM(conf)
 
     # Initialize the parameters
     for p in model.parameters():

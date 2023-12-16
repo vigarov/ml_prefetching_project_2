@@ -7,7 +7,6 @@ from tokenizers import Tokenizer
 from tokenizers.models import BPE
 from tokenizers.trainers import BpeTrainer
 from tokenizers.pre_tokenizers import Whitespace
-from tokenizers.decoders import BPEDecoder
 
 from pathlib import Path
 import numpy as np
