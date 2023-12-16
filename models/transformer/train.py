@@ -141,7 +141,7 @@ def run_validation(model, validation_ds, tokenizer_src, tokenizer_tgt, max_len, 
         writer.flush()
 
 
-def get_feature_tokenizer(tok_file, feature, padder=False) -> st.TokenizerWrapper: #todo revert
+def get_feature_tokenizer(tok_file, feature, padder=False) -> st.TokenizerWrapper:  # todo revert
     SPACE_SPLITTER = st.Splitter(lambda input_str: input_str.split(), config["list_elem_separation_token"])
     is_list = "list" in feature.type
     primitive_feature_type = feature.get_primitive_type()
@@ -408,20 +408,6 @@ if __name__ == '__main__':
     # warnings.filterwarnings("ignore")
     # train_model(get_config())
     config = get_config()
-    device = "cuda" if torch.cuda.is_available() else "mps" if torch.has_mps or torch.backends.mps.is_available() else "cpu"
-    print("Using device:", device)
-    if (device == 'cuda'):
-        print(f"Device name: {torch.cuda.get_device_name(device.index)}")
-        print(f"Device memory: {torch.cuda.get_device_properties(device.index).total_memory / 1024 ** 3} GB")
-    elif (device == 'mps'):
-        print(f"Device name: <mps>")
-    else:
-        print("NOTE: If you have a GPU, consider using it for training.")
-        print(
-            "      On a Windows machine with NVidia GPU, check this video: https://www.youtube.com/watch?v=GMSjDTU8Zlc")
-        print(
-            "      On a Mac machine, run: pip3 install --pre torch torchvision torchaudio torchtext --index-url https://download.pytorch.org/whl/nightly/cpu")
-    device = torch.device(device)
 
     if "processed" in config["data_path"]:
         df_raw = read_csv(config["data_path"])
@@ -430,51 +416,63 @@ if __name__ == '__main__':
                          save=False)  # load_dataset(f"{config['datasource']}", f"{config['lang_src']}-{config['lang_tgt']}", split='train')
     df_raw = df_raw.astype({col: str for col in df_raw.columns if df_raw[col].dtype == "int64"})
     print("loaded data")
-    # Build tokenizers
-    src_tokenizer, tgt_tokenizer = get_tokenizers(config)
 
-    train_tensor_size = int(config["train_test_split"] * len(df_raw))
-    indices = torch.arange(
-        len(df_raw))  # torch.randperm(len(df_raw), generator=generator)  # TODO think about overlapping pfault windows
+    for feature in config["input_features"]:
+        feature_tokenizer = get_feature_tokenizer(config['tokenizer_files'], feature)
+        dataframe = df_raw[feature.name]
+        lengths = []
+        occurences = {}
+        for data in dataframe:
+            data_list = data  # .values.flatten().tolist()[0]
+            encoded = feature_tokenizer.encode(data_list)
+            ids = encoded.ids
+            lengths.append(len(ids))
 
-    feature_tokenizer = get_feature_tokenizer(config['tokenizer_files'], config['input_features'][3])
-    dataframe = df_raw['ustack']
-    lengths = []
-    occurences = {}
-    for data in dataframe:
-        data_list = data #.values.flatten().tolist()[0]
-        encoded = feature_tokenizer.encode(data_list)
-        ids = encoded.ids
-        lengths.append(len(ids))
+            for id in ids:
+                token = feature_tokenizer.id_to_token(id)
+                occurences[token] = occurences.get(token, 0) + 1
 
-        for id in ids:
-            token = feature_tokenizer.id_to_token(id)
-            occurences[token] = occurences.get(token, 0) + 1
+        #replace printfs by saving to file in stats/
+        mean = np.mean(lengths)
+        std = np.std(lengths)
+        max = np.max(lengths)
+        min = np.min(lengths)
+        f = open(f"stats/{feature.name}/stats.txt", "w")
+        f.write(f"mean: {mean}\n")
+        f.write(f"std: {std}\n")
+        f.write(f"max: {max}\n")
+        f.write(f"min: {min}\n")
 
 
 
-    print(f"Mean length tokenized string: {np.mean(lengths)}")
-    print(f"Std length tokenized string: {np.std(lengths)}")
-    most_common_tokens = sorted(occurences, key=occurences.get, reverse=True)[:10]
-    total_occurences = np.sum(list(occurences.values()))
-    print("Most common tokens:")
-    for token in most_common_tokens:
-        print(f"\tToken {token} ({feature_tokenizer.token_to_id(token)}), total occurences = {occurences[token]}, percentage = {(occurences[token] / total_occurences)*100}")
+        most_common_tokens = sorted(occurences, key=occurences.get, reverse=True)[:10]
+        total_occurences = np.sum(list(occurences.values()))
+        f.write("Most common tokens:\n")
+        for token in most_common_tokens:
+            f.write(
+                f"\tToken {token} ({feature_tokenizer.token_to_id(token)}), total occurences = {occurences[token]}, percentage = {(occurences[token] / total_occurences) * 100}\n")
 
-    #create graph of occurences with tokens at the basis axis
-    import matplotlib.pyplot as plt
-    plt.bar(range(len(occurences)), list(occurences.values()), align='center')
-    plt.xticks(range(len(occurences)), list(occurences.keys()))
-    plt.show()
+        f.close()
 
-    plt.bar(range(len(most_common_tokens)), [occurences[token] for token in most_common_tokens], align='center')
-    plt.xticks(range(len(most_common_tokens)), most_common_tokens)
-    plt.show()
+        # create graph of occurences with tokens at the basis axis
+        import matplotlib.pyplot as plt
 
-    token_ids = [feature_tokenizer.token_to_id(token) for token in most_common_tokens]
-    #and one for most_common_tokens showing the token id on the basis axis
-    plt.bar(range(len(most_common_tokens)), [occurences[token] for token in most_common_tokens], align='center')
-    plt.xticks(range(len(most_common_tokens)), token_ids)
-    plt.show()
+        plt.bar(range(len(occurences)), list(occurences.values()), align='center')
+        plt.xticks(range(len(occurences)), list(occurences.keys()))
+        plt.title("Occurences of tokens")
+        plt.savefig(f"stats/{feature.name}/occurences_{feature.name}.png")
+        plt.close()
+
+        plt.bar(range(len(most_common_tokens)), [occurences[token] for token in most_common_tokens], align='center')
+        plt.xticks(range(len(most_common_tokens)), most_common_tokens)
+        plt.savefig(f"stats/{feature.name}/occurences_most_common_{feature.name}.png")
+        plt.close()
+
+        token_ids = [feature_tokenizer.token_to_id(token) for token in most_common_tokens]
+        # and one for most_common_tokens showing the token id on the basis axis
+        plt.bar(range(len(most_common_tokens)), [occurences[token] for token in most_common_tokens], align='center')
+        plt.xticks(range(len(most_common_tokens)), token_ids)
+        plt.savefig(f"stats/{feature.name}/occurences_most_common_ids_{feature.name}.png")
+        plt.close()
 
 
