@@ -197,7 +197,7 @@ class TokenizerWrapper:
             # Remove SOS/EOS ;
             to_np = to_np[np.all(
                 [to_np != self.token_to_id(self.wrap_parameters.tokens[0]),
-                 to_np != self.token_to_id(self.wrap_parameters.tokens[0])],
+                 to_np != self.token_to_id(self.wrap_parameters.tokens[1])],
                 axis=0)]
         to_np = to_np - self.num_prepended_extra_special_tokens
         ids_list.ids = to_np.tolist()
