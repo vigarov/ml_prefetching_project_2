@@ -41,6 +41,8 @@ class PageFaultDataset(Dataset):
         assert self.output_tokenizer.wraps() and self.output_tokenizer.returns_right_wrap_index()
         tokenized_output, right_index = self.output_tokenizer.encode(raw_output)
         assert tokenized_output.ids[right_index] == self.output_tokenizer.token_to_id(self.pad_token)
+        if right_index > 0:
+            assert tokenized_output.ids[right_index-1] != self.output_tokenizer.token_to_id(self.pad_token)
         tokenized_output = tokenized_output.ids
         tokenized_output = torch.tensor(tokenized_output, dtype=torch.int64)  # size = (O)
 
@@ -76,9 +78,9 @@ class PageFaultDataset(Dataset):
         ])  # size = O+1 = O'
 
         ground_truth = torch.concat([
-            tokenized_output[:right_index],
+            tokenized_output[:right_index], # Actual tokens
             torch.tensor([self.output_tokenizer.token_to_id(self.start_stop_generating_tokens[1])]),
-            tokenized_output[right_index:-1]
+            tokenized_output[right_index:-1] # Paddings
         ])  # size = O + 1 = O'
 
         # The encoder mask simply corresponds to all the tokenized input, that is not a padding token
@@ -97,7 +99,7 @@ class PageFaultDataset(Dataset):
 
         return {
             "encoder_input": tokenized_input,
-            "decoder_input": tokenized_output,
+            "decoder_input": decoder_input,
             "encoder_mask": encoder_mask,
             "decoder_mask": decoder_mask,
             "label": ground_truth,

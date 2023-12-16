@@ -55,7 +55,7 @@ def get_config():
         "list_elem_separation_token": " ",  # Global, tokenizers specific; be careful with that one, see comment in TokenizerWrapper of special_tokenizers.py
         "feature_separation_token": "[FSP]", # Global, tokenizers specific
         "start_stop_generating_tokens" : ["[GTR]","[GTP]"], # Global, tokenizers specific
-        "batch_size": 16,  # Training hyperparameter
+        "batch_size": 8,  # Training hyperparameter
         "num_epochs": 22,  # Training hyperparameter
         "lr": 10 ** -4,  # Training hyperparameter
         "datasource": "canneal",  # Global
