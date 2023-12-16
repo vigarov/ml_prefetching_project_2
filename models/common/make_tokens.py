@@ -1,12 +1,12 @@
-from config import get_config
+from models.common.config import get_config
 from pandas import read_csv, concat
 from itertools import groupby
 
 # Huggingface tokenizers
-from tokenizers import Tokenizer, PreTokenizedString
+from tokenizers import Tokenizer
 from tokenizers.models import BPE
 from tokenizers.trainers import  BpeTrainer
-from tokenizers.pre_tokenizers import Whitespace, PreTokenizer
+from tokenizers.pre_tokenizers import Whitespace
 
 from pathlib import Path
 

@@ -712,7 +712,7 @@ class RetNetPreTrainedModel(PreTrainedModel):
 @dataclass
 class RetNetOutputWithPast(ModelOutput):
     """
-    class for RetNet model's outputs that may also contain a past key/values (to speed up sequential decoding).
+    class for retnet model's outputs that may also contain a past key/values (to speed up sequential decoding).
 
     config:
         last_hidden_state (`torch.FloatTensor` of shape `(batch_size, sequence_length, decoder_embed_dim)`):
@@ -1004,7 +1004,7 @@ class RetNetModel(RetNetPreTrainedModel):
 @dataclass
 class RetNetCausalLMOutputWithPast(ModelOutput):
     """
-    class for RetNet causal language model (or autoregressive) outputs.
+    class for retnet causal language model (or autoregressive) outputs.
 
     config:
         loss (`torch.FloatTensor` of shape `(1,)`, *optional*, returned when `labels` is provided):

@@ -2,7 +2,7 @@ from pathlib import Path
 from dataclasses import dataclass
 import re
 
-DATA_PATH = "data/processed/"
+DATA_PATH = "../transformer/data/processed/"
 SEED_FN = "rand_seed.txt"
 STATE_FN = "state.pt"
 
@@ -64,7 +64,8 @@ def get_default_config():
         "k_predictions": K_PREDICTIONS,  # Model hyperparameter
         "input_features": INPUT_FEATURES,  # Model hyperparameter
         "output_features": OUTPUT_FEATURES,  # Model hyperparameter
-        "embedding_technique": "concat_tokens"
+        "embedding_technique": "concat_tokens",
+        "model_size": "300m"  # Model hyperparameter if retnet, choose with "300m", "1.5b"
         # Model hyperparameter, choose with "hextet_concat", "onetext", "meta_transofrmer" TODO:, "embed_concat"
     }
 

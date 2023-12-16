@@ -2,8 +2,8 @@ import torch
 import torch.nn as nn
 import math
 
-import models.RetNet.retnet.configuration_retnet as RetNetConfig
-import models.RetNet.retnet.modeling_retnet as RetNetForCausalLM
+import models.retnet.retnet.configuration_retnet as RetNetConfig
+import models.retnet.retnet.modeling_retnet as RetNetForCausalLM
 
 
 class LayerNormalization(nn.Module):
@@ -245,9 +245,9 @@ class Transformer(nn.Module):
         return self.projection_layer(x)
 
 
-# Returns either Transformer or RetNet
+# Returns either Transformer or retnet
 def build_model(config, in_vocab_size: int, out_vocab_size: int, pos_in_len: int, pos_out_len: int):
-    # TODO: some things hereunder might be Transformer specific, and might need to be factorized when we implement RetNet
+    # TODO: some things hereunder might be Transformer specific, and might need to be factorized when we implement retnet
     model_pms = config["attention_model_params"]
     att_model = config["attention_model"]
 
@@ -302,10 +302,12 @@ def build_model(config, in_vocab_size: int, out_vocab_size: int, pos_in_len: int
         model = Transformer(encoder, decoder, src_embed, tgt_embed, src_pos, tgt_pos, projection_layer)
 
     else:
-        conf = RetNetConfig.RetNetConfig(vocab_size=in_vocab_size,
-                                         decoder_embed_dim=model_pms.d_model,
-                                         decoder_retention_heads=model_pms.H, #TODO is it the same?
-                                         dropout=model_pms.dropout)
+        conf = RetNetConfig.load_config_from_json(f"configs/retnet-{config['model_size']}/config.json")
+        conf.vocab_size = in_vocab_size
+        conf.decoder_vocab_size = out_vocab_size
+        conf.decoder_embed_dim = model_pms.d_model
+        conf.decoder_retention_heads = model_pms.H  #TODO is it the same?
+        conf.dropout = model_pms.dropout
         model = RetNetForCausalLM.RetNetForCausalLM(conf)
 
     # Initialize the parameters

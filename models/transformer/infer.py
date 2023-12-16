@@ -2,10 +2,9 @@ import os
 from pathlib import Path
 
 import torch
-import torchmetrics
 
-from models.transformer.config import get_device, get_config, latest_weights_file_path
-from models.transformer.dataset import causal_mask, BilingualDataset
+from models.common.config import get_device, get_config, latest_weights_file_path
+from models.common.dataset import causal_mask, BilingualDataset
 from tokenizers import Tokenizer
 
 from models.transformer.train import get_model
