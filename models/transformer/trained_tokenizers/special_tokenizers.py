@@ -1,5 +1,6 @@
 from dataclasses import dataclass, field
 import numpy as np
+import tokenizers
 
 DEBUG_TOKENIZERS = False
 
@@ -55,8 +56,8 @@ class SimpleCustomVocabTokenizer:
                 print(all_e)
         return SimpleTokenIdList(ids=[self.reverse_dict[element] for element in all_e])
 
-    def decode(self, ids_list: SimpleTokenIdList) -> str:
-        return ''.join([self.full_vocab[id_] for id_ in ids_list.ids])
+    def decode(self, ids_list: list[int]) -> str:
+        return ''.join([self.full_vocab[id_] for id_ in ids_list])
 
     def get_vocab(self):
         return self.full_vocab
@@ -72,7 +73,7 @@ class TokenizerWrapper:
     # Important note: this wrapper only preserves the tokenizer's `decode(encode(x)) == x` propery iff the given
     # Splitter's replace_token corresponds to, when added, to the "reverse" of the split_function
     # (e.g.: if split_function == split() and replace_token = " ")
-    def __init__(self, bpe_tokenizer, num_special_tokens: int, pad_length: int, splitter: Splitter = None,
+    def __init__(self, underlying_tokenizer : tokenizers.Tokenizer | SimpleCustomVocabTokenizer, num_special_tokens: int, pad_length: int, splitter: Splitter = None,
                  pad_token: str | None = None, wrap_parameters: WrapParameters | None = None):
         self.num_prepended_extra_special_tokens = 0
         self.wrap_parameters = wrap_parameters
@@ -80,7 +81,7 @@ class TokenizerWrapper:
             assert len(wrap_parameters.tokens) == 2
             assert wrap_parameters.on_encode_wrap_type in ["insert_lr", "no_insert_get_right_index"]
             self.num_prepended_extra_special_tokens += 2
-        self.bpe_tokenizer = bpe_tokenizer
+        self.underlying_tokenizer = underlying_tokenizer
         self.splitter = splitter
         # if not None, we must also be a padder - this is useful for output tokenization, metatransformer, embed_concat
         if pad_token is not None:
@@ -90,9 +91,9 @@ class TokenizerWrapper:
         # (so that pad and unk are always at the same pos, might be important)
         self.num_special_tokens = num_special_tokens
         self.has_replacement_token = self.splitter is not None and self.splitter.replace_token != ""
-        self.vocab_size = bpe_tokenizer.get_vocab_size() + self.num_prepended_extra_special_tokens
+        self.vocab_size = underlying_tokenizer.get_vocab_size() + self.num_prepended_extra_special_tokens
         if self.has_replacement_token:
-            assert self.splitter.replace_token not in self.bpe_tokenizer.get_vocab()
+            assert self.splitter.replace_token not in self.underlying_tokenizer.get_vocab()
             self.vocab_size += 1
         self.pad_length = pad_length
 
@@ -111,14 +112,14 @@ class TokenizerWrapper:
         if self.has_replacement_token:
             if token_str == self.splitter.replace_token:
                 return self.num_prepended_extra_special_tokens + self.num_special_tokens
-            token_id = self.bpe_tokenizer.token_to_id(token_str)
+            token_id = self.underlying_tokenizer.token_to_id(token_str)
             if token_id is None:
                 raise KeyError
             assert isinstance(token_id, int)
             if token_id < self.num_special_tokens:
                 return token_id + self.num_prepended_extra_special_tokens
             return token_id + 1 + self.num_prepended_extra_special_tokens  # Shifted because of the replace, pad tokens
-        return self.bpe_tokenizer.token_to_id(token_str)
+        return self.underlying_tokenizer.token_to_id(token_str)
 
     def id_to_token(self, id_: int) -> str:
         if self.pad_token is not None:
@@ -135,16 +136,16 @@ class TokenizerWrapper:
             if id_ == self.num_special_tokens:
                 return self.splitter.replace_token
             elif id_ < self.num_special_tokens:
-                return self.bpe_tokenizer.id_to_token(id_)
+                return self.underlying_tokenizer.id_to_token(id_)
             else:
-                return self.bpe_tokenizer.id_to_token(id_ - 1)
-        return self.bpe_tokenizer.id_to_token(id_)
+                return self.underlying_tokenizer.id_to_token(id_ - 1)
+        return self.underlying_tokenizer.id_to_token(id_)
 
     def encode(self, str_to_encode: str) -> (SimpleTokenIdList | tuple[SimpleTokenIdList, int]):
         ret = SimpleTokenIdList()
         if self.splitter is not None:
             elemnts_to_encode = self.splitter.split_function(str_to_encode)
-            encoded_elements = [self.bpe_tokenizer.encode(element).ids for element in
+            encoded_elements = [self.underlying_tokenizer.encode(element).ids for element in
                                 elemnts_to_encode]  # list[list[int]]
             for i, encoded_elements_list in enumerate(encoded_elements):
                 to_np = np.array(encoded_elements_list)
@@ -163,7 +164,7 @@ class TokenizerWrapper:
             # Before padding, `return ret` was sufficient here
         else:
             # No need to split, our job is very easy
-            raw_tokenization = self.bpe_tokenizer.encode(str_to_encode).ids
+            raw_tokenization = self.underlying_tokenizer.encode(str_to_encode).ids
             to_np = np.array(raw_tokenization)
             to_np = to_np + self.num_prepended_extra_special_tokens
             ret.ids = to_np.tolist()
@@ -214,9 +215,9 @@ class TokenizerWrapper:
                     ret += self.splitter.replace_token
                 to_np = np.array(elem)
                 to_decode = to_np - (to_np >= self.num_special_tokens).astype(int)
-                ret += self.bpe_tokenizer.decode(to_decode.tolist())
+                ret += self.underlying_tokenizer.decode(to_decode.tolist())
             return ret
-        return self.bpe_tokenizer.decode(ids_list.ids)
+        return self.underlying_tokenizer.decode(ids_list.ids)
 
     def get_pad_length(self):
         return self.pad_length

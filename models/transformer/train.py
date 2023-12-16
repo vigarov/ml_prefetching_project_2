@@ -190,7 +190,7 @@ def get_tokenizers(config) -> ((st.ConcatTokenizer | list[st.TokenizerWrapper]),
     token_type = config["embedding_technique"]
     tok_file = config['tokenizer_files']
     input_features, output_features = config["input_features"], config["output_features"]
-    assert len(output_features) == 1 and "list" in output_features[0].feature_type
+    assert len(output_features) == 1 and "list" in output_features[0].type
     # To build the tokenizers, see make_tokens.py
     if token_type == "concat_tokens":
         out_tokenizer = get_feature_tokenizer(tok_file, output_features[0], padder=True,
@@ -200,7 +200,11 @@ def get_tokenizers(config) -> ((st.ConcatTokenizer | list[st.TokenizerWrapper]),
             st.SimpleCustomVocabTokenizer(HEX_VOCAB,SPECIAL_TOKENS,HEX_ADDRESS_SPLITTER),
             len(SPECIAL_TOKENS),
             output_features[0].max_len,
-            SPACE_SPLITTER
+            splitter=SPACE_SPLITTER,
+            pad_token=config["pad_token"],
+            wrap_parameters=st.WrapParameters(
+                config["start_stop_generating_tokens"],
+                "no_insert_get_right_index")
         )
     if token_type in ["concat_tokens", "hextet_concat"]:
         inp_ret_dict = get_feature_tokenizer_dict(tok_file, input_features, all_padders=False)
@@ -382,7 +386,6 @@ def train_model(config):
         loss_fn = nn.CrossEntropyLoss(ignore_index=output_pad_id,
                                       label_smoothing=0.1).to(device)
 
-    DEBUG = True
 
     for epoch in range(initial_epoch, config['num_epochs']):
         torch.cuda.empty_cache()
@@ -393,8 +396,6 @@ def train_model(config):
             decoder_input = batch['decoder_input'].to(device)  # (B, O')
             encoder_mask = batch['encoder_mask'].to(device)  # (B, 1, 1, I)
             decoder_mask = batch['decoder_mask'].to(device)  # (B, 1, O', O')
-            if DEBUG:
-                print(tokenizer_tgt.decode(st.SimpleTokenIdList(decoder_input[0,:].clone().cpu())))
             # Run the tensors through the encoder, decoder and the projection layer
             encoder_output = model.encode(encoder_input, encoder_mask)  # (B, I, D)
             decoder_output = model.decode(encoder_output, encoder_mask, decoder_input,
