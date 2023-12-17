@@ -297,7 +297,7 @@ def get_model(config, inp_tokenizer: st.ConcatTokenizer | list[st.TokenizerWrapp
         raise NotImplementedError
 
     pad_token_id = inp_tokenizer.token_to_id(config["pad_token"])[0]
-    eos_token_id = inp_tokenizer.token_to_id(config["start_stop_generating_tokens"][1])[0]
+    eos_token_id = out_tokenizer.token_to_id(config["start_stop_generating_tokens"][1])
     model = build_model(config, src_vocab_size, out_vocab_size, inp_seq_len, out_seq_len, pad_token_id, eos_token_id)
     return model
 
@@ -385,8 +385,8 @@ def train_model(model):
                 proj_output = model.project(decoder_output)  # (B, O', D)
 
             elif config['attention_model'] == "retnet":
-                outputs = model(encoder_input)
-                proj_output = outputs.get("logits")
+                proj_output = model(encoder_input)[0]
+
                 print(proj_output.shape)
             else:
                 exit(-3)

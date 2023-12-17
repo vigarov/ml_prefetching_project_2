@@ -3,7 +3,7 @@ from torch import nn
 
 import models.transformer.model as TransformerModel
 from models.retnet.configuration_retnet import load_config_from_json
-from models.retnet.modeling_retnet import RetNetForCausalLM
+from models.retnet.modeling_retnet import RetNetForCausalLM, RetNetModel
 
 
 def build_model(config, in_vocab_size: int, out_vocab_size: int, pos_in_len: int, pos_out_len: int, pad_token_id: int, eos_token_id: int):
@@ -73,7 +73,7 @@ def build_model(config, in_vocab_size: int, out_vocab_size: int, pos_in_len: int
         conf.dropout = model_pms.dropout
         conf.pad_token_id = pad_token_id
         conf.eos_token_id = eos_token_id
-        model = RetNetForCausalLM(conf)
+        model = RetNetModel(conf)
 
     # Initialize the parameters
     for p in model.parameters():
