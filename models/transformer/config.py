@@ -77,7 +77,7 @@ def get_config():
         "attention_model": "transformer",  # Model hyperparameter, choose with "retnet"
         "attention_model_params" : TransformerModelParams(),  # Model hyperparameter
         "past_window": PAST_WINDOW,  # Model hyperparameter
-        "k_predictions": K_PREDICTIONS,  # Model hyperparameter
+        "k_predictions": K_PREDICTIONS,  # Model Cuz they al
         "input_features": INPUT_FEATURES,  # Model hyperparameter
         "output_features": OUTPUT_FEATURES,  # Model hyperparameter
         "base_tokenizer": "hextet",  # Model hyperparameter, choose with "bpe", "text"
@@ -87,7 +87,8 @@ def get_config():
         # With "meta_transformer", tokenize each feature, pad as with concat, instead of embedding, throw in transformer
         # With "embed_concat", we embed each feature independently of each other, then concatenate the embeddings
         "embedding_technique": "meta_transformer",  # Model hyperparameter, choose in between "tok_concat", "onetext", "meta_transformer", "embed_concat"
-        "meta_transformer_parameters" : MetaTransformerParams()  # Model hyperparameter, but not thaaat interesting
+        "meta_transformer_parameters": MetaTransformerParams(),  # Model hyperparameter, but not thaaat interesting
+        "page_masked": True  # Model hyperparameter
     }
 
     max_path = None
@@ -108,13 +109,15 @@ def get_config():
     config["data_path"] = max_path.absolute().as_posix()
 
     model_hash_features = ["attention_model", "past_window", "k_predictions", "input_features",
-                           "embedding_technique","base_tokenizer"]
+                           "embedding_technique","base_tokenizer","page_masked"]
 
     def parse_mhf(feature_name):
         model_feature = config[feature_name]
         assert model_feature is not None
         if isinstance(model_feature, list):
             return "".join([s.name[:1] for s in model_feature])
+        if isinstance(model_feature,bool):
+            return str(int(model_feature))  # "0" or "1"
         return str(model_feature).replace('_','.')
 
     model_name = "_".join(parse_mhf(mhf)[:5] for mhf in model_hash_features)

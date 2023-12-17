@@ -4,6 +4,12 @@ from pathlib import Path
 import ast
 import re
 
+PAGE_SIZE = 4096
+
+
+def get_page_address(addr: int)->int:
+    return addr & ~(PAGE_SIZE-1)
+
 
 def load_json(filename): 
     print("Loading data")
@@ -23,7 +29,7 @@ RAW_DATA_PATH = "/home/vigarov/ml_prefetching_project_2/data/raw/correct_out_3.t
 PREPROCESS_SAVE_PATH = "/home/vigarov/ml_prefetching_project_2/data/prepro/" 
 
 PREPRO_VERSION = 1.1
-PRO_VERSION = 1.4
+PRO_VERSION = 1.5
 
 
 def preprocess(path=RAW_DATA_PATH,save=True):
@@ -36,7 +42,7 @@ def preprocess(path=RAW_DATA_PATH,save=True):
         return df
 
 
-def process(preprocessed_file,source_window,pred_window,save = False):
+def process(preprocessed_file,source_window,pred_window,page_mask,save = False):
     p = Path(preprocessed_file)
     assert p.exists() and p.is_file() and p.suffix == ".csv"
     if "prepro" in p.absolute().as_posix():
@@ -44,6 +50,9 @@ def process(preprocessed_file,source_window,pred_window,save = False):
     else:
         df = preprocess(preprocessed_file,save=False)
     y = []
+
+    if page_mask :
+        df["address"].apply(lambda address: get_page_address(int(address)))
 
     # Build history
     running_past_window = [hex(a) for a in df["address"][:source_window]]
