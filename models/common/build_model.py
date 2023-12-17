@@ -1,9 +1,12 @@
 # Returns either Transformer or retnet
 from torch import nn
+from torchscale.architecture.config import RetNetConfig
+from torchscale.architecture.retnet import RetNetDecoder
 
 import models.transformer.model as TransformerModel
 from models.retnet.configuration_retnet import load_config_from_json
-from models.retnet.modeling_retnet import RetNetForCausalLM, RetNetModel
+from models.retnet.modeling_retnet import RetNetModel
+from models.retnet.retnet_encoder_decoder import RetNetEncoderDecoder
 
 
 def build_model(config, in_vocab_size: int, out_vocab_size: int, pos_in_len: int, pos_out_len: int, pad_token_id: int, eos_token_id: int):
@@ -62,18 +65,38 @@ def build_model(config, in_vocab_size: int, out_vocab_size: int, pos_in_len: int
         model = TransformerModel.Transformer(encoder, decoder, src_embed, tgt_embed, src_pos, tgt_pos, projection_layer)
 
     else:
-        conf = load_config_from_json(f"../../models/retnet/configs/retnet-{config['model_size']}/config.json")
-        conf.vocab_size = in_vocab_size
-        conf.decoder_vocab_size = out_vocab_size
-        conf.decoder_embed_dim = model_pms.d_model
-        conf.decoder_pos_len = pos_in_len
-        conf.decoder_num_layers = model_pms.T
-        conf.decoder_num_attention_heads = model_pms.H
-        conf.decoder_retention_heads = model_pms.H  #TODO is it the same?
-        conf.dropout = model_pms.dropout
-        conf.pad_token_id = pad_token_id
-        conf.eos_token_id = eos_token_id
-        model = RetNetModel(conf)
+        conf1 = load_config_from_json(f"../../models/retnet/configs/retnet-{config['model_size']}/config.json")
+        conf1.vocab_size = in_vocab_size
+        conf1.decoder_embed_dim = model_pms.d_model
+        conf1.decoder_pos_len = pos_in_len
+        conf1.decoder_num_layers = model_pms.T
+        conf1.decoder_num_attention_heads = model_pms.H
+        conf1.decoder_retention_heads = model_pms.H  #TODO is it the same?
+        conf1.dropout = model_pms.dropout
+        conf1.pad_token_id = pad_token_id
+        conf1.eos_token_id = eos_token_id
+        encoder = RetNetModel(conf1)
+
+        conf2 = load_config_from_json(f"../../models/retnet/configs/retnet-{config['model_size']}/config.json")
+        conf2.vocab_size = out_vocab_size
+        conf2.decoder_embed_dim = model_pms.d_model
+        conf2.decoder_pos_len = pos_out_len
+        conf2.decoder_num_layers = model_pms.T
+        conf2.decoder_num_attention_heads = model_pms.H
+        conf2.decoder_retention_heads = model_pms.H  #TODO is it the same?
+        conf2.dropout = model_pms.dropout
+        conf2.pad_token_id = pad_token_id
+        conf2.eos_token_id = eos_token_id
+        decoder = RetNetModel(conf2) #todo refactor
+
+        decoder_cross_attention_block = TransformerModel.MultiHeadAttentionBlock(model_pms.d_model, model_pms.H,
+                                                                                 model_pms.dropout)
+
+        projection_layer = TransformerModel.ProjectionLayer(model_pms.d_model, out_vocab_size)
+
+        model = RetNetEncoderDecoder(encoder, decoder, features=model_pms.d_model,
+                                     cross_attention_block=decoder_cross_attention_block,
+                                     dropout=model_pms.dropout, projection_layer=projection_layer)
 
     # Initialize the parameters
     for p in model.parameters():

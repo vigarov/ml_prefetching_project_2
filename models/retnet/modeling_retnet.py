@@ -14,6 +14,8 @@ from transformers.modeling_outputs import ModelOutput, SequenceClassifierOutputW
 from transformers.modeling_utils import PreTrainedModel
 from transformers.utils import logging
 
+from ..transformer.model import LayerNormalization
+
 try:
     from apex.normalization import FusedLayerNorm as LayerNorm
 except ModuleNotFoundError:
@@ -999,6 +1001,18 @@ class RetNetModel(RetNetPreTrainedModel):
             retentions=all_retentions,
             attentions=all_retentions,
         )
+
+
+class RetNetDecoder(nn.Module):
+    def __init__(self, features: int, layers: nn.ModuleList) -> None:
+        super().__init__()
+        self.layers = layers
+        self.norm = LayerNormalization(features)
+
+    def forward(self, x, encoder_output, src_mask, tgt_mask):
+        for layer in self.layers:
+            x = layer(x, encoder_output, src_mask, tgt_mask)
+        return self.norm(x)
 
 
 @dataclass

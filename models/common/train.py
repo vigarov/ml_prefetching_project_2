@@ -374,22 +374,16 @@ def train_model(model):
         batch_iterator = tqdm(train_dataloader, desc=f"Processing Epoch {epoch:02d}")
         for batch in batch_iterator:
             encoder_input = batch['encoder_input'].to(device)  # (B, I)
-            if config['attention_model'] == "transformer":
-                decoder_input = batch['decoder_input'].to(device)  # (B, O')
-                encoder_mask = batch['encoder_mask'].to(device)  # (B, 1, 1, I)
-                decoder_mask = batch['decoder_mask'].to(device)  # (B, 1, O', O')
-                # Run the tensors through the encoder, decoder and the projection layer
-                encoder_output = model.encode(encoder_input, encoder_mask)  # (B, I, D)
-                decoder_output = model.decode(encoder_output, encoder_mask, decoder_input,
-                                              decoder_mask)  # (B, O', D)
-                proj_output = model.project(decoder_output)  # (B, O', D)
-
-            elif config['attention_model'] == "retnet":
-                proj_output = model(encoder_input)[0]
-
-                print(proj_output.shape)
-            else:
-                exit(-3)
+            decoder_input = batch['decoder_input'].to(device)  # (B, O')
+            encoder_mask = batch['encoder_mask'].to(device)  # (B, 1, 1, I)
+            decoder_mask = batch['decoder_mask'].to(device)  # (B, 1, O', O')
+            # Run the tensors through the encoder, decoder and the projection layer
+            encoder_output = model.encode(encoder_input, encoder_mask)  # (B, I, D) todo maybe add encoder mask
+            print(f"Encoder output shape {encoder_output.shape}")
+            decoder_output = model.decode(encoder_output, encoder_mask, decoder_input, decoder_mask)  # (B, O', D)
+            print(f"Decoder output shape {decoder_output.shape}")
+            proj_output = model.project(decoder_output)  # (B, O', D)
+            print(f"Projection output shape {proj_output.shape}")
 
             # Compare the output with the label
             label = batch['label'].to(device)  # (B, O')
