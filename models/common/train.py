@@ -403,7 +403,7 @@ def train_model(model):
             global_step += 1
 
         # Run validation at the end of every epoch
-        run_validation(model, val_dataloader, tokenizer_tgt, config["start_stop_generating_tokens"],
+        run_validation(model, config, val_dataloader, tokenizer_tgt, config["start_stop_generating_tokens"],
                        config["output_features"][0].max_len,
                        device, lambda msg: batch_iterator.write(msg), global_step, writer)
 
