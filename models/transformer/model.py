@@ -232,10 +232,10 @@ class Transformer(nn.Module):
         return self.encoder(src, src_mask)
 
     def decode(self, encoder_output: torch.Tensor, src_mask: torch.Tensor, tgt: torch.Tensor, tgt_mask: torch.Tensor):
-        # (batch, seq_len, d_model)
-        tgt = self.tgt_embed(tgt)
-        tgt = self.tgt_pos(tgt)
-        return self.decoder(tgt, encoder_output, src_mask, tgt_mask)
+        # (B, O', D)
+        embeds = self.tgt_embed(tgt)
+        pos = self.tgt_pos(embeds)
+        return self.decoder(pos, encoder_output, src_mask, tgt_mask)
 
     def project(self, x):
         # (batch, seq_len, vocab_size)
