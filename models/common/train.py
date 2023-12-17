@@ -17,7 +17,7 @@ from models.common.trained_tokenizers import special_tokenizers as st
 from models.common.trained_tokenizers.special_tokenizers import SimpleTokenIdList
 
 
-def greedy_decode(model,
+def greedy_decode(model, config,
                   source_data, source_mask,
                   tokenizer_tgt: st.TokenizerWrapper, start_stop_tokens: list,
                   max_len, device):
@@ -25,9 +25,20 @@ def greedy_decode(model,
     start_idx, end_idx = tokenizer_tgt.token_to_id(start_stop_tokens[0]), tokenizer_tgt.token_to_id(
         start_stop_tokens[1])
     # Precompute the encoder output and reuse it for every step
-    encoder_output = model.encode(source_data, source_mask)
+    if config['attention_model'] == "transformer":
+        encoder_output = model.encode(source_data, source_mask)
     # Initialize the decoder input with the sos token
     decoder_input = torch.empty(1, 1).fill_(start_idx).type_as(source_data).to(device)
+    i = 0
+    Y_recurrent = []
+    ratio = conf.TransformerModelParams.d_model // conf.TransformerModelParams.H
+    s_n_1s = [
+        [
+            torch.zeros(ratio, ratio).unsqueeze(0).repeat(1, 1, 1)
+            for _ in range(conf.TransformerModelParams.H)
+        ] for _ in range(conf.TransformerModelParams.T)
+    ]
+
     while True:
         if decoder_input.size(1) == max_len:
             break
@@ -36,14 +47,23 @@ def greedy_decode(model,
         decoder_mask = causal_mask(decoder_input.size(1)).type_as(source_mask).to(device)
 
         # calculate output
-        out = model.decode(encoder_output, source_mask, decoder_input, decoder_mask)
+        if config['attention_model'] == "transformer":
+            out = model.decode(encoder_output, source_mask, decoder_input, decoder_mask)
+            # get next token
+            prob = model.project(out[:, -1])
+            _, next_token = torch.max(prob, dim=1)  # Greedy
+            decoder_input = torch.cat(
+                [decoder_input, torch.empty(1, 1).type_as(source_data).fill_(next_token.item()).to(device)], dim=1
+            )
+        else:
+            Y, s_ns = model.forward_recurrent(decoder_input[:, i], s_n_1s, i + 1)
+            Y_recurrent.append(Y)
+            s_n_1s = s_ns
 
-        # get next token
-        prob = model.project(out[:, -1])
-        _, next_token = torch.max(prob, dim=1)  # Greedy
-        decoder_input = torch.cat(
-            [decoder_input, torch.empty(1, 1).type_as(source_data).fill_(next_token.item()).to(device)], dim=1
-        )
+            Y_recurrent = torch.stack(Y_recurrent, dim=1)
+
+            # test sample
+            next_token = torch.max(Y_recurrent, dim=1)
 
         if next_token == end_idx:
             break
@@ -79,11 +99,9 @@ def run_validation(model, config, validation_ds: DataLoader,
             # check that the batch size is 1
             assert encoder_input.size(0) == 1, "Batch size must be 1 for validation"
 
-            if config['attention_model'] == "transformer":
-                model_out = greedy_decode(model, encoder_input, encoder_mask, tokenizer_tgt, start_stop_tokens, max_len,
-                                          device)
-            elif config['attention_model'] == "retnet":
-                model_out = model.custom_generate(encoder_input, max_new_tokens=conf.OUTPUT_FEATURES[0].max_len, do_sample=False, early_stopping=True)
+            model_out = greedy_decode(model, config, encoder_input, encoder_mask, tokenizer_tgt, start_stop_tokens,
+                                      max_len,
+                                      device)
 
             source_text = batch["src_text"][0]
             target_text = batch["tgt_text"][0]
@@ -373,20 +391,24 @@ def train_model(model):
         model.train()
         batch_iterator = tqdm(train_dataloader, desc=f"Processing Epoch {epoch:02d}")
         for batch in batch_iterator:
-            encoder_input = batch['encoder_input'].to(device)  # (B, I)
             decoder_input = batch['decoder_input'].to(device)  # (B, O')
-            encoder_mask = batch['encoder_mask'].to(device)  # (B, 1, 1, I)
-            decoder_mask = batch['decoder_mask'].to(device)  # (B, 1, O', O')
-            # Run the tensors through the encoder, decoder and the projection layer
-            encoder_output = model.encode(encoder_input, encoder_mask)  # (B, I, D) todo maybe add encoder mask
-            decoder_output = model.decode(encoder_output, encoder_mask, decoder_input, decoder_mask)  # (B, O', D)
-            proj_output = model.project(decoder_output)  # (B, O', D)
+            if config['attention_model'] == "transformer":
+                # Get the tensors from the batch
+                encoder_input = batch['encoder_input'].to(device)  # (B, I)
+                encoder_mask = batch['encoder_mask'].to(device)  # (B, 1, 1, I)
+                decoder_mask = batch['decoder_mask'].to(device)  # (B, 1, O', O')
+                # Run the tensors through the encoder, decoder and the projection layer
+                encoder_output = model.encode(encoder_input, encoder_mask)  # (B, I, D) todo maybe add encoder mask
+                decoder_output = model.decode(encoder_output, encoder_mask, decoder_input, decoder_mask)  # (B, O', D)
+                output = model.project(decoder_output)  # (B, O', D)
+            else:
+                output = model(decoder_input)
 
             # Compare the output with the label
             label = batch['label'].to(device)  # (B, O')
 
             # Compute the loss using a simple cross entropy
-            loss = loss_fn(proj_output.view(-1, tokenizer_tgt.get_vocab_size()), label.view(-1))
+            loss = loss_fn(output.view(-1, tokenizer_tgt.get_vocab_size()), label.view(-1))
             batch_iterator.set_postfix({"loss": f"{loss.item():6.3f}"})
 
             # Log the loss
