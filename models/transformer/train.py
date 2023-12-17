@@ -267,7 +267,7 @@ def get_ds(config, generator) -> (
     if "processed" in config["data_path"]:
         df_raw = read_csv(config["data_path"])
     else:
-        df_raw = process(config["data_path"], config["past_window"], config["k_predictions"],
+        df_raw = process(config["data_path"], config["past_window"], config["k_predictions"],config["page_masked"],
                          save=False)  # load_dataset(f"{config['datasource']}", f"{config['lang_src']}-{config['lang_tgt']}", split='train')
     df_raw = df_raw.astype({col: str for col in df_raw.columns if df_raw[col].dtype == "int64"})
     print("loaded data")

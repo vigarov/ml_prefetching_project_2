@@ -91,4 +91,4 @@ def process(preprocessed_file,source_window,pred_window,page_mask,save = False):
 
 
 if __name__ == "__main__":
-    process("/home/vigarov/ml_prefetching_project_2/data/prepro/canneal_v1.1.csv",10,10,save=True)
+    process("/home/vigarov/ml_prefetching_project_2/data/prepro/canneal_v1.1.csv",10,10,True,save=True)
