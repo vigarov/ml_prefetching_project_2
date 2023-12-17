@@ -88,7 +88,8 @@ def get_config():
         # With "embed_concat", we embed each feature independently of each other, then concatenate the embeddings
         "embedding_technique": "meta_transformer",  # Model hyperparameter, choose in between "tok_concat", "onetext", "meta_transformer", "embed_concat"
         "meta_transformer_parameters": MetaTransformerParams(),  # Model hyperparameter, but not thaaat interesting
-        "page_masked": True  # Model hyperparameter
+        "page_masked": True,  # Model hyperparameter
+        "max_weight_save_history": 3  # Global hyperparameter
     }
 
     max_path = None

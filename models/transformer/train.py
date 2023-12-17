@@ -318,7 +318,7 @@ def get_model(config, inp_tokenizer: st.ConcatTokenizer | list[st.TokenizerWrapp
     return model
 
 
-def train_model(config):
+def train_model(config,mass_training=False):
     # Define the device
     device = "cuda" if torch.cuda.is_available() else "mps" if torch.has_mps or torch.backends.mps.is_available() else "cpu"
     print("Using device:", device)
@@ -369,6 +369,8 @@ def train_model(config):
     initial_epoch = 0
     global_step = 0
     preload = config['preload']
+    past_save_files = []
+    MAX_PREVIOUS_WEIGHTS_HISTORY = config["max_weight_save_history"]
     model_filename = latest_weights_file_path(config) if preload == 'latest' \
         else get_weights_file_path(config, preload) if preload \
         else None
@@ -382,8 +384,9 @@ def train_model(config):
         initial_epoch = state['epoch'] + 1
         optimizer.load_state_dict(state['optimizer_state_dict'])
         global_step = state['global_step']
+        past_save_files = state["past_saves"]
     else:
-        print('No model to preload, starting from scratch')
+        print(f'No model to preload, starting training of {model_filename} from scratch')
 
     emb_type = config["embedding_technique"]
     pad_token = config["pad_token"]
@@ -409,6 +412,9 @@ def train_model(config):
                                   label_smoothing=0.1).to(device)
 
     for epoch in range(initial_epoch, config['num_epochs']):
+        if mass_training and len(past_save_files) > MAX_PREVIOUS_WEIGHTS_HISTORY:
+            oldest_file = past_save_files.pop(0)
+            Path(oldest_file).unlink()
         torch.cuda.empty_cache()
         model.train()
         batch_iterator = tqdm(train_dataloader, desc=f"Processing Epoch {epoch:02d}")
@@ -455,10 +461,11 @@ def train_model(config):
             'epoch': epoch,
             'model_state_dict': model.state_dict(),
             'optimizer_state_dict': optimizer.state_dict(),
-            'global_step': global_step
+            'global_step': global_step,
+            "past_saves": past_save_files
         }, model_filename)
-
+        past_save_files.append(model_filename)
 
 if __name__ == '__main__':
-    warnings.filterwarnings("ignore")
-    train_model(get_config())
+    #warnings.filterwarnings("ignore")
+    train_model(get_config(),True)

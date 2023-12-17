@@ -14,7 +14,7 @@ def get_page_address(addr: int)->int:
 def load_json(filename): 
     print("Loading data")
     # FIXME: I need bleach for my eyes Alex
-    with open(filename, 'r') as file: 
+    with open(filename, 'r') as file:
         data = file.read() 
         data = data.replace("\n", " ") 
     with open(filename, 'w') as file: 
@@ -52,7 +52,7 @@ def process(preprocessed_file,source_window,pred_window,page_mask,save = False):
     y = []
 
     if page_mask :
-        df["address"].apply(lambda address: get_page_address(int(address)))
+        df["address"] = df["address"].apply(lambda address: get_page_address(int(address)))
 
     # Build history
     running_past_window = [hex(a) for a in df["address"][:source_window]]
