@@ -384,7 +384,8 @@ def train_model(config,mass_training=False):
         initial_epoch = state['epoch'] + 1
         optimizer.load_state_dict(state['optimizer_state_dict'])
         global_step = state['global_step']
-        past_save_files = state["past_saves"]
+        past_save_files = [Path(smf).as_posix() for smf in source_model_files(config)]
+        past_save_files.sort()
     else:
         print(f'No model to preload, starting training of {model_filename} from scratch')
 
@@ -461,8 +462,7 @@ def train_model(config,mass_training=False):
             'epoch': epoch,
             'model_state_dict': model.state_dict(),
             'optimizer_state_dict': optimizer.state_dict(),
-            'global_step': global_step,
-            "past_saves": past_save_files
+            'global_step': global_step
         }, model_filename)
         past_save_files.append(model_filename)
 
