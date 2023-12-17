@@ -28,7 +28,7 @@ from trained_tokenizers import special_tokenizers as st
 
 import torchmetrics
 from torch.utils.tensorboard import SummaryWriter
-from sklearn.metrics import accuracy_score
+from sklearn.metrics import accuracy_score, f1_score
 
 def greedy_decode(model,
                   source_data, source_mask,
@@ -160,6 +160,19 @@ def run_validation(model, validation_ds: DataLoader,
             avg_acc += accuracy_score(pred, exp)
         avg_acc /= len(expected)
         writer.add_scalar("sklearn acc", avg_acc, global_step)
+        writer.flush()
+
+        avg_f1 = 0
+        for i, prex in enumerate(zip(predicted, expected)):
+            pred = prex[0].split(" ")
+            exp = prex[1].split(" ")
+            exp = list(filter(lambda x: len(x) > 1, exp))
+            pred = list(filter(lambda x: len(x) > 1, pred))
+            if len(pred) < 10:
+                pred.extend([''] * (10-len(pred)))
+            avg_f1 += f1_score(pred, exp)
+        avg_f1 /= len(expected)
+        writer.add_scalar("sklearn acc", avg_f1, global_step)
         writer.flush()
 
 
