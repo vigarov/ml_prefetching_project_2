@@ -6,7 +6,7 @@ from models.retnet.configuration_retnet import load_config_from_json
 from models.retnet.modeling_retnet import RetNetForCausalLM
 
 
-def build_model(config, in_vocab_size: int, out_vocab_size: int, pos_in_len: int, pos_out_len: int, pad_token_id: int):
+def build_model(config, in_vocab_size: int, out_vocab_size: int, pos_in_len: int, pos_out_len: int, pad_token_id: int, eos_token_id: int):
     # TODO: some things hereunder might be Transformer specific, and might need to be factorized when we implement retnet
     model_pms = config["attention_model_params"]
     att_model = config["attention_model"]
@@ -66,9 +66,13 @@ def build_model(config, in_vocab_size: int, out_vocab_size: int, pos_in_len: int
         conf.vocab_size = in_vocab_size
         conf.decoder_vocab_size = out_vocab_size
         conf.decoder_embed_dim = model_pms.d_model
+        conf.decoder_pos_len = pos_in_len
+        conf.decoder_num_layers = model_pms.T
+        conf.decoder_num_attention_heads = model_pms.H
         conf.decoder_retention_heads = model_pms.H  #TODO is it the same?
         conf.dropout = model_pms.dropout
         conf.pad_token_id = pad_token_id
+        conf.eos_token_id = eos_token_id
         model = RetNetForCausalLM(conf)
 
     # Initialize the parameters

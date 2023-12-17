@@ -1,4 +1,6 @@
+import torch
 from transformers import (Trainer, TrainingArguments, DataCollatorForLanguageModeling)
+from transformers.data.data_collator import DataCollatorMixin, DefaultDataCollator
 
 from models.common.config import get_weights_file_path
 
@@ -17,7 +19,7 @@ def train_model(model, config, train_dataset, eval_dataset, tokenizer, loss_fct)
                             eval_dataset=eval_dataset.dataset,
                             tokenizer=tokenizer,
                             loss_fct=loss_fct,
-                            data_collator=DataCollatorForLanguageModeling(tokenizer=tokenizer, mlm=False))
+                            data_collator=EmptyCollator())
 
     trainer.train()
     return trainer.model
@@ -37,3 +39,8 @@ class CustomTrainer(Trainer):
         # compute custom loss (suppose one has 3 labels with different weights)
         loss = self.loss_fct(logits.view(-1, self.model.config.num_labels), labels.view(-1))
         return (loss, outputs) if return_outputs else loss
+
+
+class EmptyCollator(DataCollatorMixin):
+    def __call__(self, features, return_tensors=None):
+        return {"labels": torch.stack([f["label"] for f in features])}
