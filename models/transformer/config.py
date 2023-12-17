@@ -49,6 +49,16 @@ class TransformerModelParams:
     dropout: float = 0.1
     d_ff: int = 2048
 
+@dataclass
+class MetaTransformerParams:
+    # As above
+    d_model: int = 512
+    T: int = 2
+    H: int = 2
+    dropout: float = 0.
+    d_ff: int = 512
+
+
 def get_config():
     config = {
         "bpe_special_tokens": ["[UNK]"],  # Global, tokenizers specific
@@ -57,7 +67,7 @@ def get_config():
         "feature_separation_token": "[FSP]", # Global, tokenizers specific
         "start_stop_generating_tokens" : ["[GTR]","[GTP]"], # Global, tokenizers specific
         "batch_size": 8,  # Training hyperparameter
-        "num_epochs": 30,  # Training hyperparameter
+        "num_epochs": 50,  # Training hyperparameter
         "lr": 10 ** -4,  # Training hyperparameter
         "datasource": "canneal",  # Global
         "model_folder": "models",  # Global
@@ -67,18 +77,24 @@ def get_config():
         "attention_model": "transformer",  # Model hyperparameter, choose with "retnet"
         "attention_model_params" : TransformerModelParams(),  # Model hyperparameter
         "past_window": PAST_WINDOW,  # Model hyperparameter
-        "k_predictions": K_PREDICTIONS,  # Model hyperparameter
+        "k_predictions": K_PREDICTIONS,  # Model Cuz they al
         "input_features": INPUT_FEATURES,  # Model hyperparameter
         "output_features": OUTPUT_FEATURES,  # Model hyperparameter
+        "base_tokenizer": "hextet",  # Model hyperparameter, choose with "bpe", "text"
         # With "concat_tokens", we tokenize each feature individually, pad the tokenized version (based on the max length observed over the data sets), increment token(feature_i) by sum_for_j<i(vocab_j), concat all tokenized_versions, embed the result concatenated tokenized version
         # With "hextet_concat", same as above, but use "special" tokenizer - see special_tokenizers.py
         # With "onetext" treat all the features as one text (use specifc text tokenizer), add SOS/TOS?, embed
         # With "meta_transformer", tokenize each feature, pad as with concat, instead of embedding, throw in transformer
         # With "embed_concat", we embed each feature independently of each other, then concatenate the embeddings
-        "embedding_technique": "hextet_concat"  # Model hyperparameter, choose with "concat_tokens","hextet_concat", "onetext", "meta_transofrmer", "embed_concat"
+        "embedding_technique": "meta_transformer",  # Model hyperparameter, choose in between "tok_concat", "onetext", "meta_transformer", "embed_concat"
+        "meta_transformer_parameters": MetaTransformerParams(),  # Model hyperparameter, but not thaaat interesting
+        "page_masked": True,  # Model hyperparameter
+        "max_weight_save_history": 3  # Global hyperparameter
     }
 
     max_path = None
+    assert ((config["base_tokenizer"] == "text" and config["embedding_technique"] == "onetext")
+            or ((config["base_tokenizer"] in ["bpe","hextet"]) and config["embedding_technique"] in ["embed_concat","meta_transformer","tok_concat"]))
     max_path_version = 0.
     for item in Path(DATA_PATH).iterdir():
         if item.is_file():
@@ -94,14 +110,16 @@ def get_config():
     config["data_path"] = max_path.absolute().as_posix()
 
     model_hash_features = ["attention_model", "past_window", "k_predictions", "input_features",
-                           "embedding_technique"]
+                           "embedding_technique","base_tokenizer","page_masked"]
 
     def parse_mhf(feature_name):
         model_feature = config[feature_name]
         assert model_feature is not None
         if isinstance(model_feature, list):
             return "".join([s.name[:1] for s in model_feature])
-        return str(model_feature)
+        if isinstance(model_feature,bool):
+            return str(int(model_feature))  # "0" or "1"
+        return str(model_feature).replace('_','.')
 
     model_name = "_".join(parse_mhf(mhf)[:5] for mhf in model_hash_features)
     config["model_basename"] = model_name

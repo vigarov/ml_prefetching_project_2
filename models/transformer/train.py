@@ -21,8 +21,6 @@ from pathlib import Path
 from pandas import read_csv
 
 from tokenizers import Tokenizer
-from tokenizers.models import BPE
-from tokenizers.pre_tokenizers import Whitespace
 
 from trained_tokenizers import special_tokenizers as st
 
@@ -31,16 +29,17 @@ from torch.utils.tensorboard import SummaryWriter
 from sklearn.metrics import accuracy_score, f1_score
 
 def greedy_decode(model,
-                  source_data, source_mask,
+                  source_data_list: list[torch.Tensor],
+                  source_mask,
                   tokenizer_tgt: st.TokenizerWrapper, start_stop_tokens: list,
                   max_len, device):
     assert start_stop_tokens is not None and len(start_stop_tokens) == 2
     start_idx, end_idx = tokenizer_tgt.token_to_id(start_stop_tokens[0]), tokenizer_tgt.token_to_id(
         start_stop_tokens[1])
     # Precompute the encoder output and reuse it for every step
-    encoder_output = model.encode(source_data, source_mask)
+    encoder_output = model.encode(source_data_list, source_mask)
     # Initialize the decoder input with the sos token
-    decoder_input = torch.empty(1, 1).fill_(start_idx).type_as(source_data).to(device)
+    decoder_input = torch.empty(1, 1).fill_(start_idx).type_as(source_data_list[0]).to(device)
     while True:
         if decoder_input.size(1) == max_len:
             break
@@ -55,7 +54,7 @@ def greedy_decode(model,
         prob = model.project(out[:, -1])
         _, next_token = torch.max(prob, dim=1)  # Greedy
         decoder_input = torch.cat(
-            [decoder_input, torch.empty(1, 1).type_as(source_data).fill_(next_token.item()).to(device)], dim=1
+            [decoder_input, torch.empty(1, 1).type_as(source_data_list[0]).fill_(next_token.item()).to(device)], dim=1
         )
 
         if next_token == end_idx:
@@ -86,13 +85,14 @@ def run_validation(model, validation_ds: DataLoader,
     with torch.no_grad():
         for batch in validation_ds:
             count += 1
-            encoder_input = batch["encoder_input"].to(device)  # (b, I)
+            encoder_input_list = batch["encoder_input"]  # [(b, I)]
+            encoder_input_list = [t.to(device) for t in encoder_input_list]
             encoder_mask = batch["encoder_mask"].to(device)  # (b, 1, 1, I)
 
             # check that the batch size is 1
-            assert encoder_input.size(0) == 1, "Batch size must be 1 for validation"
+            assert encoder_input_list[0].size(0) == 1, "Batch size must be 1 for validation"
 
-            model_out = greedy_decode(model, encoder_input, encoder_mask, tokenizer_tgt, start_stop_tokens, max_len,
+            model_out = greedy_decode(model, encoder_input_list, encoder_mask, tokenizer_tgt, start_stop_tokens, max_len,
                                       device)
 
             source_text = batch["src_text"][0]
@@ -181,17 +181,20 @@ def get_tokenizers(config) -> ((st.ConcatTokenizer | list[st.TokenizerWrapper]),
     HEX_VOCAB = ["0x"] + [hex(j)[2:].zfill(2) for j in range(0xff + 1)]
     HEX_ADDRESS_SPLITTER = st.Splitter(lambda address: [address[i:i + 2] for i in range(0, len(address), 2)])
     SPECIAL_TOKENS = config["bpe_special_tokens"]
-    def get_feature_tokenizer(tok_file: str, feature: Feature, padder=False,
+    def get_feature_tokenizer(tok_file_or_custom: str, feature: Feature, padder=False,
                               sentence_like_wrap_mode: str | None = None) -> st.TokenizerWrapper:
+        # Since '!' is not an allowed character in path, we use it as a flag to signal if we should prefer using a custom
+        # vocab tokenizer for the features that support it
+        # TODO: if you want to refactor, passing along a bool flag in all the funcs is infinitely better, but couldn't be arsed to do it
+        custom = "!" in tok_file_or_custom
+        tok_file_or_custom = tok_file_or_custom.replace('!','')
+
         is_list = "list" in feature.type
         primitive_feature_type = feature.get_primitive_type()
-
-        tokenizer_path = Path(tok_file.format(primitive_feature_type))
-        assert tokenizer_path.exists() and tokenizer_path.suffix == ".json"
-        tokenizer = Tokenizer.from_file(tokenizer_path.absolute().as_posix())
         splitter = None
         if is_list:
             splitter = SPACE_SPLITTER
+
         pad_token = config["pad_token"] if padder else None
         wrap_params = None
         if sentence_like_wrap_mode is not None:
@@ -200,36 +203,60 @@ def get_tokenizers(config) -> ((st.ConcatTokenizer | list[st.TokenizerWrapper]),
                 config["start_stop_generating_tokens"],
                 sentence_like_wrap_mode)
 
+        if custom and "hex" in primitive_feature_type or "bit" in primitive_feature_type:
+            if "hex" in primitive_feature_type:
+                custom_vocab = HEX_VOCAB
+                if "number" not in primitive_feature_type:
+                    input_splitter = HEX_ADDRESS_SPLITTER
+                else:
+                    # our input is going to be either 0x{2*N} or 0x{2*N+1}
+                    # In the first case, no problem. In the second case however, we must add a zero after the 0x for our
+                    # tokenizer to work
+                    input_splitter = st.Splitter(
+                        lambda number: [number[i:i + 2] for i in range(0, len(number), 2)] if len(number) % 2 == 0
+                                  else [number[:2],'0'+number[2]] + [number[i:i+2] for i in range(3,len(number),2)]
+                    )
+            else:  # "bit" in prim_feature_type
+                custom_vocab = ['0', '1']
+                input_splitter = st.Splitter(lambda bitmap: [bitmap[i] for i in range(len(bitmap))])
+
+            tokenizer = st.SimpleCustomVocabTokenizer(custom_vocab, SPECIAL_TOKENS, input_splitter=input_splitter)
+        else:
+            tokenizer_path = Path(tok_file_or_custom.format(primitive_feature_type))
+            assert tokenizer_path.exists() and tokenizer_path.suffix == ".json"
+            tokenizer = Tokenizer.from_file(tokenizer_path.absolute().as_posix())
+
         return st.TokenizerWrapper(
             tokenizer,
-            len(config["bpe_special_tokens"]),
+            len(SPECIAL_TOKENS),
             feature.max_len,
             splitter=splitter,
             pad_token=pad_token,
             wrap_parameters=wrap_params)
 
-    def get_feature_tokenizer_dict(tok_file, features: list[Feature], all_padders=False):
+    def get_feature_tokenizer_dict(tok_file_or_custom, features: list[Feature], all_padders=False):
         ret_dict = {}
         for feature in features:
             sentence_like_wrap_mode = None
             if feature.name == "prev_faults":
                 sentence_like_wrap_mode = "insert_lr"
-            ret_dict[feature.name] = get_feature_tokenizer(tok_file, feature, padder=all_padders,
+            ret_dict[feature.name] = get_feature_tokenizer(tok_file_or_custom, feature, padder=all_padders,
                                                            sentence_like_wrap_mode=sentence_like_wrap_mode)
         return ret_dict
 
-    def get_tok_list_from_dict(features, feature_tokenizer_dict):
+    def helper_get_tok_list_from_dict(features, feature_tokenizer_dict):
         return [feature_tokenizer_dict[feature.name] for feature in features]
 
-    token_type = config["embedding_technique"]
+    base_tokenizer = config["base_tokenizer"]
+    emb_type = config["embedding_technique"]
     tok_file = config['tokenizer_files']
     input_features, output_features = config["input_features"], config["output_features"]
     assert len(output_features) == 1 and "list" in output_features[0].type
     # To build the tokenizers, see make_tokens.py
-    if token_type == "concat_tokens":
+    if base_tokenizer == "bpe":
         out_tokenizer = get_feature_tokenizer(tok_file, output_features[0], padder=True,
                                           sentence_like_wrap_mode="no_insert_get_right_index")
-    else:
+    elif base_tokenizer == "hextet":
         out_tokenizer = st.TokenizerWrapper(
             st.SimpleCustomVocabTokenizer(HEX_VOCAB,SPECIAL_TOKENS,HEX_ADDRESS_SPLITTER),
             len(SPECIAL_TOKENS),
@@ -240,47 +267,27 @@ def get_tokenizers(config) -> ((st.ConcatTokenizer | list[st.TokenizerWrapper]),
                 config["start_stop_generating_tokens"],
                 "no_insert_get_right_index")
         )
-    if token_type in ["concat_tokens", "hextet_concat"]:
-        inp_ret_dict = get_feature_tokenizer_dict(tok_file, input_features, all_padders=False)
-        if token_type == "hextet_concat":
-            for feature in input_features:
-                prim_feature_type = feature.get_primitive_type()
-                is_list = "list" in feature.type
-                splitter = None
-                if is_list:
-                    splitter = SPACE_SPLITTER
-                if "hex" in prim_feature_type or "bit" in prim_feature_type:
-                    if "hex" in prim_feature_type:
-                        custom_vocab = HEX_VOCAB
-                        if "number" not in prim_feature_type:
-                            input_splitter = HEX_ADDRESS_SPLITTER
-                        else:
-                            # our input is going to be either 0x{2*N} or 0x{2*N+1}
-                            # In the first case, no problem. In the second case however, we must add a zero after the 0x
-                            input_splitter = st.Splitter(
-                                lambda number: [number[i:i + 2] for i in range(0, len(number), 2)] if len(number) % 2 == 0
-                                          else [number[:2],'0'+number[2]] + [number[i:i+2] for i in range(3,len(number),2)]
-                            )
-                    else:  # "bit" in prim_feature_type
-                        custom_vocab = ['0', '1']
-                        input_splitter = st.Splitter(lambda bitmap: [bitmap[i] for i in range(len(bitmap))])
-
-                    inp_ret_dict[feature.name] = st.TokenizerWrapper(
-                        st.SimpleCustomVocabTokenizer(custom_vocab, SPECIAL_TOKENS, input_splitter=input_splitter),
-                        len(SPECIAL_TOKENS),
-                        feature.max_len,
-                        splitter)
-        final_input_tokenizer = st.ConcatTokenizer(
-            config["feature_separation_token"],
-            config["pad_token"],
-            get_tok_list_from_dict(input_features, inp_ret_dict))
-        return final_input_tokenizer, out_tokenizer
-    elif token_type in ["meta_transformer", "embed_concat"]:
-        inp_ret_dict = get_feature_tokenizer_dict(tok_file, input_features, all_padders=True)
-        # Since each feature will be embedded differently, each tokenizer must be its own padder --> must recreate dict
-        return get_tok_list_from_dict(input_features, inp_ret_dict), out_tokenizer
     else:
-        assert token_type == "onetext"
+        assert base_tokenizer == "text"
+        raise NotImplementedError
+    #if token_type in ["concat_tokens", "hextet_concat"]:
+    individual_padders = emb_type in ["meta_transformer","embed_concat"]
+    # Since '!' is not an allowed character in path, we use it as a flag to signal if we should prefer using a custom
+    # vocab tokenizer for the features that support it
+    # TODO: if you want to refactor, passing along a bool flag in all the funcs is infinitely better, but couldn't be arsed to do it
+    tok_file = ('!' if base_tokenizer == 'hextet' else '') + tok_file
+    inp_ret_dict = get_feature_tokenizer_dict(tok_file, input_features, all_padders=individual_padders)
+    if emb_type == "tok_concat":
+        final_input_tokenizer = st.ConcatTokenizer(
+                config["feature_separation_token"],
+                config["pad_token"],
+                helper_get_tok_list_from_dict(input_features, inp_ret_dict))
+        return final_input_tokenizer, out_tokenizer
+    elif emb_type in ["meta_transformer", "embed_concat"]:
+        # Since each feature will be embedded differently, each tokenizer must be its own padder --> must recreate dict
+        return helper_get_tok_list_from_dict(input_features, inp_ret_dict), out_tokenizer
+    else:
+        assert emb_type == "onetext"
         raise NotImplementedError
         tokenizer_path = Path(tok_file.format("onetext"))
         assert tokenizer_path.exists() and tokenizer_path.suffix == ".json"
@@ -294,7 +301,7 @@ def get_ds(config, generator) -> (
     if "processed" in config["data_path"]:
         df_raw = read_csv(config["data_path"])
     else:
-        df_raw = process(config["data_path"], config["past_window"], config["k_predictions"],
+        df_raw = process(config["data_path"], config["past_window"], config["k_predictions"],config["page_masked"],
                          save=False)  # load_dataset(f"{config['datasource']}", f"{config['lang_src']}-{config['lang_tgt']}", split='train')
     df_raw = df_raw.astype({col: str for col in df_raw.columns if df_raw[col].dtype == "int64"})
     print("loaded data")
@@ -320,30 +327,32 @@ def get_ds(config, generator) -> (
 
 def get_model(config, inp_tokenizer: st.ConcatTokenizer | list[st.TokenizerWrapper] | st.TokenizerWrapper,
               out_tokenizer: st.TokenizerWrapper):
-    embedding_type = config["embedding_technique"]
-    
+    base_tokenizer = config["base_tokenizer"]
+    emb_type = config["embedding_technique"]
     out_vocab_size = out_tokenizer.get_vocab_size()
     out_seq_len = int(config["output_features"][0].max_len)
-    if embedding_type in ["concat_tokens", "hextet_concat"]:
+    used_features = config["input_features"]
+    if emb_type == "tok_concat":
         src_vocab_size = inp_tokenizer.get_vocab_size()
-        used_features = config["input_features"]
         inp_seq_len = (sum([int(feature.max_len) for feature in used_features]) + len(
             used_features) - 1)  # we add a separator token between features
-    elif embedding_type == "onetext":
+    elif emb_type == "onetext":
+        assert type(inp_tokenizer) == st.TokenizerWrapper
         src_vocab_size = inp_tokenizer.get_vocab_size()
         # inp_seq_len = ? TODO
         raise NotImplementedError
     else:
-        assert embedding_type in ["meta_transformer", "embed_concat"]
+        assert emb_type in ["meta_transformer", "embed_concat"] and type(inp_tokenizer) == list
+        src_vocab_size = [it.get_vocab_size() for it in inp_tokenizer]
+        inp_seq_len = [int(feature.max_len) for feature in used_features]
         # TODO: we might have to slightly adapt build_model for those two, which is why I am currently taking the tokenizers themselves as input
         # TODO cont: This might however not be needed, maybe we can do with only the different sizes/lengths
-        raise NotImplementedError
 
     model = build_model(config, src_vocab_size, out_vocab_size, inp_seq_len, out_seq_len)
     return model
 
 
-def train_model(config):
+def train_model(config,mass_training=False):
     # Define the device
     device = "cuda" if torch.cuda.is_available() else "mps" if torch.has_mps or torch.backends.mps.is_available() else "cpu"
     print("Using device:", device)
@@ -394,6 +403,8 @@ def train_model(config):
     initial_epoch = 0
     global_step = 0
     preload = config['preload']
+    past_save_files = []
+    MAX_PREVIOUS_WEIGHTS_HISTORY = config["max_weight_save_history"]
     model_filename = latest_weights_file_path(config) if preload == 'latest' \
         else get_weights_file_path(config, preload) if preload \
         else None
@@ -407,32 +418,49 @@ def train_model(config):
         initial_epoch = state['epoch'] + 1
         optimizer.load_state_dict(state['optimizer_state_dict'])
         global_step = state['global_step']
+        past_save_files = [Path(smf).as_posix() for smf in source_model_files(config)]
+        past_save_files.sort()
     else:
-        print('No model to preload, starting from scratch')
+        print(f'No model to preload, starting training of {get_model_full_path(config)} from scratch')
 
-    embedding_type = config["embedding_technique"]
-    if embedding_type in ["meta_transformer", "embed_concat"]:
-        # TODO: one loss per embedding layer? imo yes
+    emb_type = config["embedding_technique"]
+    pad_token = config["pad_token"]
+    if emb_type in ["meta_transformer", "embed_concat"]:
+        assert type(tokenizer_src) == list
+        input_pad_ids = [tok.token_to_id(pad_token) for tok in tokenizer_src]
+        input_pad_id = input_pad_ids[0]
+        for ipi in input_pad_ids:
+            assert ipi == input_pad_id
+    elif emb_type == "tok_concat":
+        assert type(tokenizer_src) == st.ConcatTokenizer
+        input_src_potential_pad_ids = tokenizer_src.token_to_id(pad_token)
+        assert len(input_src_potential_pad_ids) == 1
+        input_pad_id = input_src_potential_pad_ids[0]
+    else:
+        assert emb_type == "onetext"
         raise NotImplementedError
-    else:
-        input_src_potential_pad_ids = tokenizer_src.token_to_id(config["pad_token"])
-        output_pad_id = tokenizer_tgt.token_to_id(config["pad_token"])
-        assert len(input_src_potential_pad_ids) == 1 and input_src_potential_pad_ids[0] == output_pad_id
-        loss_fn = nn.CrossEntropyLoss(ignore_index=output_pad_id,
-                                      label_smoothing=0.1).to(device)
 
+    output_pad_id = tokenizer_tgt.token_to_id(config["pad_token"])
+    assert input_pad_id == output_pad_id
+
+    loss_fn = nn.CrossEntropyLoss(ignore_index=output_pad_id,
+                                  label_smoothing=0.1).to(device)
 
     for epoch in range(initial_epoch, config['num_epochs']):
+        if mass_training and len(past_save_files) > MAX_PREVIOUS_WEIGHTS_HISTORY:
+            oldest_file = past_save_files.pop(0)
+            Path(oldest_file).unlink()
         torch.cuda.empty_cache()
         model.train()
         batch_iterator = tqdm(train_dataloader, desc=f"Processing Epoch {epoch:02d}")
         for batch in batch_iterator:
-            encoder_input = batch['encoder_input'].to(device)  # (B, I)
+            encoder_input_list = batch['encoder_input']  # [(B, I)]
+            encoder_input_list = [t.to(device) for t in encoder_input_list]
             decoder_input = batch['decoder_input'].to(device)  # (B, O')
             encoder_mask = batch['encoder_mask'].to(device)  # (B, 1, 1, I)
             decoder_mask = batch['decoder_mask'].to(device)  # (B, 1, O', O')
             # Run the tensors through the encoder, decoder and the projection layer
-            encoder_output = model.encode(encoder_input, encoder_mask)  # (B, I, D)
+            encoder_output = model.encode(encoder_input_list, encoder_mask)  # (B, I, D)
             decoder_output = model.decode(encoder_output, encoder_mask, decoder_input,
                                           decoder_mask)  # (B, O', D)
             proj_output = model.project(decoder_output)  # (B, O', D)
@@ -470,8 +498,8 @@ def train_model(config):
             'optimizer_state_dict': optimizer.state_dict(),
             'global_step': global_step
         }, model_filename)
-
+        past_save_files.append(model_filename)
 
 if __name__ == '__main__':
     warnings.filterwarnings("ignore")
-    train_model(get_config())
+    train_model(get_config(),True)
