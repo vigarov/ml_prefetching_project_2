@@ -303,11 +303,12 @@ def get_model(config, inp_tokenizer: st.ConcatTokenizer | list[st.TokenizerWrapp
         inp_seq_len = (sum([int(feature.max_len) for feature in used_features]) + len(
             used_features) - 1)  # we add a separator token between features
     elif emb_type == "onetext":
+        assert type(inp_tokenizer) == st.TokenizerWrapper
         src_vocab_size = inp_tokenizer.get_vocab_size()
         # inp_seq_len = ? TODO
         raise NotImplementedError
     else:
-        assert emb_type in ["meta_transformer", "embed_concat"]
+        assert emb_type in ["meta_transformer", "embed_concat"] and type(inp_tokenizer) == list
         src_vocab_size = [it.get_vocab_size() for it in inp_tokenizer]
         inp_seq_len = [int(feature.max_len) for feature in used_features]
         # TODO: we might have to slightly adapt build_model for those two, which is why I am currently taking the tokenizers themselves as input

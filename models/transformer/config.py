@@ -49,6 +49,16 @@ class TransformerModelParams:
     dropout: float = 0.1
     d_ff: int = 2048
 
+@dataclass
+class MetaTransformerParams:
+    # As above
+    d_model: int = 512
+    T: int = 2
+    H: int = 2
+    dropout: float = 0.
+    d_ff: int = 512
+
+
 def get_config():
     config = {
         "bpe_special_tokens": ["[UNK]"],  # Global, tokenizers specific
@@ -76,7 +86,8 @@ def get_config():
         # With "onetext" treat all the features as one text (use specifc text tokenizer), add SOS/TOS?, embed
         # With "meta_transformer", tokenize each feature, pad as with concat, instead of embedding, throw in transformer
         # With "embed_concat", we embed each feature independently of each other, then concatenate the embeddings
-        "embedding_technique": "embed_concat"  # Model hyperparameter, choose with "onetext", "meta_transformer", "embed_concat"
+        "embedding_technique": "meta_transformer",  # Model hyperparameter, choose in between "tok_concat", "onetext", "meta_transformer", "embed_concat"
+        "meta_transformer_parameters" : MetaTransformerParams()  # Model hyperparameter, but not thaaat interesting
     }
 
     max_path = None

@@ -1,7 +1,7 @@
 import torch
 import torch.nn as nn
 import math
-
+from config import MetaTransformerParams
 
 class LayerNormalization(nn.Module):
 
@@ -163,6 +163,7 @@ class TransformerEncoder(nn.Module):
         self.norm = LayerNormalization(features)
 
     def forward(self, x, mask):
+        x = x.to(torch.float32) # no-op for everything but meta-transformer
         for layer in self.layers:
             x = layer(x, mask)
         return self.norm(x)
@@ -215,11 +216,22 @@ class Transformer(nn.Module):
 
     def __init__(self, encoder: TransformerEncoder, decoder: TransformerDecoder, src_embeds: nn.ModuleList, # list  of embeddings
                  tgt_embed: InputEmbeddings, src_pos: PositionalEncoding, tgt_pos: PositionalEncoding,
-                 projection_layer: ProjectionLayer) -> None:
+                 projection_layer: ProjectionLayer, meta_transformer_pms: MetaTransformerParams | None = None) -> None:
         super().__init__()
         self.encoder = encoder
         self.decoder = decoder
         self.src_embeds = src_embeds
+        self.meta_transformer = None
+        if meta_transformer_pms is not None:
+            self.meta_transformer = TransformerEncoder(
+                    meta_transformer_pms.d_model,
+                    nn.ModuleList([EncoderBlock(
+                        meta_transformer_pms.d_model,
+                        MultiHeadAttentionBlock(meta_transformer_pms.d_model,meta_transformer_pms.H,meta_transformer_pms.dropout),
+                        FeedForwardBlock(meta_transformer_pms.d_model,meta_transformer_pms.d_ff,meta_transformer_pms.dropout),
+                        meta_transformer_pms.dropout
+                               ) for _ in range(meta_transformer_pms.T)])
+                )
         self.tgt_embed = tgt_embed
         self.src_pos = src_pos
         self.tgt_pos = tgt_pos
@@ -231,6 +243,8 @@ class Transformer(nn.Module):
         all_embeddings = [embedder(tokens) for embedder,tokens in zip(self.src_embeds,src_list)]
         src = torch.hstack(all_embeddings)  # Concat embedding
         src = self.src_pos(src)
+        if self.meta_transformer is not None:
+            src = self.meta_transformer(src,src_mask)
         return self.encoder(src, src_mask)
 
     def decode(self, encoder_output: torch.Tensor, src_mask: torch.Tensor, tgt: torch.Tensor, tgt_mask: torch.Tensor):
@@ -258,10 +272,7 @@ def build_model(config, in_vocab_size: int | list[int], out_vocab_size: int, pos
     else:
         assert emb_type in ["embed_concat","meta_transformer"]
         assert type(in_vocab_size) == list and type(pos_in_len) == list
-        if emb_type == "embed_concat":
-            src_embeds = nn.ModuleList([InputEmbeddings(model_pms.d_model, voc_size) for voc_size in in_vocab_size])
-        else:
-            raise NotImplementedError
+        src_embeds = nn.ModuleList([InputEmbeddings(model_pms.d_model, voc_size) for voc_size in in_vocab_size])
 
         # "meta_transformer" and "embed_concat" also adds pos. encodings after the embedding, so all good
         # (c.f. equation 7, section 3.3 of meta-transformer paper)

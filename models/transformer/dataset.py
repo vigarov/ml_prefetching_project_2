@@ -25,6 +25,7 @@ class PageFaultDataset(Dataset):
             for it in input_tokenizer:
                 assert it.token_to_id(self.pad_token) == inp_pad_id
         elif self.embedding_type == "tok_concat":
+            assert type(input_tokenizer) == st.ConcatTokenizer
             input_possible_pad_ids = input_tokenizer.token_to_id(self.pad_token)
             assert len(input_possible_pad_ids) == 1
             inp_pad_id = input_possible_pad_ids[0]

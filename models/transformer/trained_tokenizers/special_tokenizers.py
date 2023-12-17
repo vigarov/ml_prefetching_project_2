@@ -234,15 +234,14 @@ class TokenizerWrapper:
 
 
 class ConcatTokenizer:
-    def __init__(self, feature_separator_token: str, pad_token: str, tokenizers: list[TokenizerWrapper]):
+    def __init__(self, feature_separator_token: str | None, pad_token: str, tokenizers: list[TokenizerWrapper]):
         self.pad_token, self.pt_id = pad_token, 0
-        self.feature_separator_token, self.fst_id = feature_separator_token, 1
+        self.feature_separator_token, self.fst_id = feature_separator_token, (1 if feature_separator_token is not None else None)
         self.tokenizers = list(tokenizers)
-        vocab_cumsums = np.cumsum(
-            [tokenizer.get_vocab_size() for tokenizer in self.tokenizers]) + 2  # +2 to account for the fsp,pad tokens
+        self.num_extra_tokens = 1 + int(feature_separator_token is not None)
+        vocab_cumsums = np.cumsum([0]+[tokenizer.get_vocab_size() for tokenizer in self.tokenizers]) + self.num_extra_tokens  # + to account for the fsp,pad tokens
         self.vocab_size = int(vocab_cumsums[-1])
         vocab_cumsums = vocab_cumsums.tolist()
-        vocab_cumsums.insert(0, 0)  # la tete a Toto
         self.vocab_cumsums = vocab_cumsums
         for tokenizer in tokenizers:
             assert not tokenizer.wraps() or not tokenizer.returns_right_wrap_index()
@@ -254,7 +253,7 @@ class ConcatTokenizer:
         # Returns a list of all possible ids, as a token might be present in > 1 (sub) tokenizer
         if token_str == self.pad_token:
             return [self.pt_id]
-        elif token_str == self.feature_separator_token:
+        elif self.feature_separator_token is not None and token_str == self.feature_separator_token:
             return [self.fst_id]
         all_possible_ids = []
         for tokenizer in self.tokenizers:
@@ -289,7 +288,7 @@ class ConcatTokenizer:
                         f"Input too long for feature {i}: max length permitted = {tokenizer.get_pad_length()}, while the encoded sequence was {len(encoded_tokens_list)}")
                 encoded_tokens_list = encoded_tokens_list + [self.pt_id] * needed_pad_tokens
             ret.ids += encoded_tokens_list
-            if i != len(features_to_encode) - 1:
+            if self.feature_separator_token is not None and i != len(features_to_encode) - 1:
                 ret.ids += [self.fst_id]  # Add feature separator token
         return ret
 
