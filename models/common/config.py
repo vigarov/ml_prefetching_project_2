@@ -79,7 +79,7 @@ def get_config(model=None, past_window=None, k_predictions=None):
         # With "meta_transformer", tokenize each feature, pad as with concat, instead of embedding, throw in transformer
         # With "embed_concat", we embed each feature independently of each other, then concatenate the embeddings
         "embedding_technique": "hextet_concat",  # Model hyperparameter, choose with "concat_tokens","hextet_concat", "onetext", "meta_transofrmer", "embed_concat"
-        "model_size": "300m"  # Model hyperparameter if retnet, choose with "300m", "1.5b" TODO: this should be either part of the RetNetConfig, or even better, make a RetNetModelParams class as above
+        "model_size": "base"  # Model hyperparameter if retnet, choose with "300m", "1.5b" TODO: this should be either part of the RetNetConfig, or even better, make a RetNetModelParams class as above
     }
 
     max_path = None

@@ -23,11 +23,8 @@ class RetNetEncoderDecoder(nn.Module):
         return self.encoder(src)[0]
 
     def decode(self, encoder_output: torch.Tensor, src_mask: torch.Tensor, tgt: torch.Tensor, tgt_mask: torch.Tensor):
-        x = self.residual_connections[1](tgt.float(), self.decoder(tgt)[0])
-        x = x.float()
-        print(type(x))
-        x = self.residual_connections[0](x, lambda x: self.cross_attention_block(x, encoder_output, encoder_output,
-                                                                                   src_mask))
+        x = self.decoder(tgt)[0]
+        x = self.cross_attention_block(x, encoder_output, encoder_output, src_mask)
         return self.norm(x)
 
     def project(self, x):

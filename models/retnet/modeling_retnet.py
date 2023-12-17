@@ -424,7 +424,7 @@ class MultiScaleRetention(nn.Module):
 
     def forward(
         self,
-        hidden_states: torch.Tensor,
+        hidden_states: (torch.Tensor,torch.Tensor,torch.Tensor),
         rel_pos: Tuple[Tuple[torch.Tensor]],
         retention_mask: Optional[torch.Tensor] = None,
         past_key_value: Optional[Tuple[torch.Tensor]] = None,
@@ -1001,18 +1001,6 @@ class RetNetModel(RetNetPreTrainedModel):
             retentions=all_retentions,
             attentions=all_retentions,
         )
-
-
-class RetNetDecoder(nn.Module):
-    def __init__(self, features: int, layers: nn.ModuleList) -> None:
-        super().__init__()
-        self.layers = layers
-        self.norm = LayerNormalization(features)
-
-    def forward(self, x, encoder_output, src_mask, tgt_mask):
-        for layer in self.layers:
-            x = layer(x, encoder_output, src_mask, tgt_mask)
-        return self.norm(x)
 
 
 @dataclass

@@ -379,15 +379,11 @@ def train_model(model):
             decoder_mask = batch['decoder_mask'].to(device)  # (B, 1, O', O')
             # Run the tensors through the encoder, decoder and the projection layer
             encoder_output = model.encode(encoder_input, encoder_mask)  # (B, I, D) todo maybe add encoder mask
-            print(f"Encoder output shape {encoder_output.shape}")
             decoder_output = model.decode(encoder_output, encoder_mask, decoder_input, decoder_mask)  # (B, O', D)
-            print(f"Decoder output shape {decoder_output.shape}")
             proj_output = model.project(decoder_output)  # (B, O', D)
-            print(f"Projection output shape {proj_output.shape}")
 
             # Compare the output with the label
             label = batch['label'].to(device)  # (B, O')
-            print(label.shape)
 
             # Compute the loss using a simple cross entropy
             loss = loss_fn(proj_output.view(-1, tokenizer_tgt.get_vocab_size()), label.view(-1))
