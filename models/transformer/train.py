@@ -387,7 +387,7 @@ def train_model(config,mass_training=False):
         past_save_files = [Path(smf).as_posix() for smf in source_model_files(config)]
         past_save_files.sort()
     else:
-        print(f'No model to preload, starting training of {model_filename} from scratch')
+        print(f'No model to preload, starting training of {get_model_full_path(config)} from scratch')
 
     emb_type = config["embedding_technique"]
     pad_token = config["pad_token"]
