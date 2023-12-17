@@ -87,7 +87,7 @@ create_results_directory() {
             case "$overwrite_choice" in
                 y|Y)
                     echo "[TraceRunner] Overwriting results directory: $output_dir"
-                    rm -rf "$output_dir"/*
+                    rm -rf "${output_dir:?}"/*
                     ;;
                 *)
                     echo "[TraceRunner] Aborted. Please choose an empty directory or specify a different one."
@@ -125,6 +125,10 @@ if [ "$use_bpftrace" = true ]; then
 
     $correct_name -o $output_file /home/garvalov/ml_prefetching_project_2/dataset_gathering/bpf_scripts/get_data_on_pfaults.bt "$parsec_bench_name"  &
     bpftrace_pid=$!
+
+    if [ "$verbose" = true ]; then
+        echo "[TraceRunner] Started bpftrace with PID $bpftrace_pid. Now running the Parsec Benchmark."
+    fi
 else
     if [ -z "$output_file" ]; then
         output_file="$non_bpf_output_path"
@@ -186,10 +190,6 @@ fi
 
 sleep $init_sleep_secs;
 
-if [ "$verbose" = true ]; then
-    echo "[TraceRunner] Executing parsec benchmark: $parsec_bench_executable $@"
-    echo "[TraceRunner] Started bpftrace with PID $bpftrace_pid. Now running the Parsec Benchmark."
-fi
 # Run parsec benchmark, see https://unix.stackexchange.com/questions/197792/joining-bash-arguments-into-single-string-with-spaces
 # "'$*'" &
 # Execute the parsec benchmark
