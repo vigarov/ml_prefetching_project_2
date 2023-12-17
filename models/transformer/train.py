@@ -467,5 +467,5 @@ def train_model(config,mass_training=False):
         past_save_files.append(model_filename)
 
 if __name__ == '__main__':
-    #warnings.filterwarnings("ignore")
+    warnings.filterwarnings("ignore")
     train_model(get_config(),True)
