@@ -18,7 +18,7 @@ from models.common.trained_tokenizers.special_tokenizers import SimpleTokenIdLis
 
 
 def greedy_decode(model, config,
-                  source_data, r_decoder_input, source_mask,
+                  source_data, source_mask,
                   tokenizer_tgt: st.TokenizerWrapper, start_stop_tokens: list,
                   max_len, device):
     assert start_stop_tokens is not None and len(start_stop_tokens) == 2
@@ -51,7 +51,7 @@ def greedy_decode(model, config,
 
         return decoder_input.squeeze(0)
     else:
-        return model.custom_generate(r_decoder_input, max_new_tokens=max_len - len(source_data), bos_token_id=start_idx,
+        return model.custom_generate(source_data, max_new_tokens=max_len - len(source_data), bos_token_id=start_idx,
                                      eos_token_id=end_idx)
 
 
@@ -79,12 +79,13 @@ def run_validation(model, config, validation_ds: DataLoader,
             count += 1
             encoder_input = batch["encoder_input"].to(device)  # (b, I)
             r_decoder_input = batch["decoder_input"].to(device)
+            tokenizer_tgt.decode(SimpleTokenIdList(r_decoder_input.detach().cpu().numpy().tolist()))
             encoder_mask = batch["encoder_mask"].to(device)  # (b, 1, 1, I)
 
             # check that the batch size is 1
             assert encoder_input.size(0) == 1, "Batch size must be 1 for validation"
 
-            model_out = greedy_decode(model, config, encoder_input, r_decoder_input, encoder_mask, tokenizer_tgt, start_stop_tokens,
+            model_out = greedy_decode(model, config, encoder_input, encoder_mask, tokenizer_tgt, start_stop_tokens,
                                       max_len,
                                       device)
 
@@ -349,8 +350,8 @@ def train_model(model):
         else None
     if model_filename:
         assert was_currently_training
-        generator.set_state(
-            gen_state)  # TODO: I think we might not need that - past weight initialization, there is no randomness right? Incorrect for dropout? Incorrect for beam search?
+        # generator.set_state(
+        #     gen_state)  # TODO: I think we might not need that - past weight initialization, there is no randomness right? Incorrect for dropout? Incorrect for beam search?
         print(f'Preloading model {model_filename}')
         state = torch.load(model_filename)
         model.load_state_dict(state['model_state_dict'])
@@ -376,10 +377,10 @@ def train_model(model):
         model.train()
         batch_iterator = tqdm(train_dataloader, desc=f"Processing Epoch {epoch:02d}")
         for batch in batch_iterator:
-            decoder_input = batch['decoder_input'].to(device)  # (B, O')
+            encoder_input = batch['encoder_input'].to(device)  # (B, I)
             if config['attention_model'] == "transformer":
                 # Get the tensors from the batch
-                encoder_input = batch['encoder_input'].to(device)  # (B, I)
+                decoder_input = batch['decoder_input'].to(device)  # (B, O')
                 encoder_mask = batch['encoder_mask'].to(device)  # (B, 1, 1, I)
                 decoder_mask = batch['decoder_mask'].to(device)  # (B, 1, O', O')
                 # Run the tensors through the encoder, decoder and the projection layer
@@ -387,7 +388,7 @@ def train_model(model):
                 decoder_output = model.decode(encoder_output, encoder_mask, decoder_input, decoder_mask)  # (B, O', D)
                 output = model.project(decoder_output)  # (B, O', D)
             else:
-                output = model(decoder_input)[0]
+                output = model(encoder_input)[0]  # (B, O', D)
             # Compare the output with the label
             label = batch['label'].to(device)  # (B, O')
 
@@ -407,7 +408,6 @@ def train_model(model):
             optimizer.zero_grad(set_to_none=True)
 
             global_step += 1
-
         # Save the model at the end of every epoch
         model_filename = conf.get_weights_file_path(config, f"{epoch:02d}")
         torch.save({

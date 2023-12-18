@@ -36,6 +36,7 @@ class RetNetConfig(PretrainedConfig):
     use_ffn_rms_norm: bool = False
     layernorm_eps: float = 1e-6
     tie_word_embeddings: bool = False
+    resize_layer_dim: int = 512,
 
     def __init__(
             self,

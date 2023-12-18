@@ -14,8 +14,6 @@ from transformers.modeling_outputs import ModelOutput, SequenceClassifierOutputW
 from transformers.modeling_utils import PreTrainedModel
 from transformers.utils import logging
 
-from ..transformer.model import LayerNormalization
-
 try:
     from apex.normalization import FusedLayerNorm as LayerNorm
 except ModuleNotFoundError:
@@ -941,7 +939,6 @@ class RetNetModel(RetNetPreTrainedModel):
             past_key_value = (
                 past_key_values[idx] if past_key_values is not None else None
             )
-
             if self.gradient_checkpointing and self.training:
 
                 def create_custom_forward(module):
@@ -1060,6 +1057,9 @@ class RetNetForCausalLM(RetNetPreTrainedModel):
             self.lm_head.weight, mean=0, std=config.decoder_embed_dim**-0.5
         )
 
+        self.resize_layer = CustomLinearReshapeNet(0,0) #added
+
+
         self.post_init()
 
     def get_input_embeddings(self):
@@ -1140,7 +1140,7 @@ class RetNetForCausalLM(RetNetPreTrainedModel):
 
         hidden_states = outputs[0]
         logits = self.lm_head(hidden_states)
-
+        logits = self.resize_layer(logits)
         loss = None
         if labels is not None:
             # Shift so that tokens < n predict n
@@ -1315,6 +1315,26 @@ class RetNetForCausalLM(RetNetPreTrainedModel):
             if early_stopping and (token == eos_token_id).all():
                 break
         return generated
+
+class CustomLinearReshapeNet(nn.Module):
+    def __init__(self, in_dims, out_dims):
+        super(CustomLinearReshapeNet, self).__init__()
+        # Define the linear layer
+        self.linear = nn.Linear(332 * 262, 100 * 262)
+
+    def forward(self, x):
+        # Flatten the tensor
+        batch_size = x.shape[0]
+        x = x.view(batch_size, -1)
+
+        # Apply linear transformation
+        x = self.linear(x)
+
+        # Reshape to the desired output shape
+        x = x.view(batch_size, 100, 262)
+
+        return x
+
 
 
 class RetNetForSequenceClassification(RetNetPreTrainedModel):
