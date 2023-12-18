@@ -18,57 +18,41 @@ from models.common.trained_tokenizers.special_tokenizers import SimpleTokenIdLis
 
 
 def greedy_decode(model, config,
-                  source_data, source_mask,
+                  source_data, r_decoder_input, source_mask,
                   tokenizer_tgt: st.TokenizerWrapper, start_stop_tokens: list,
                   max_len, device):
     assert start_stop_tokens is not None and len(start_stop_tokens) == 2
     start_idx, end_idx = tokenizer_tgt.token_to_id(start_stop_tokens[0]), tokenizer_tgt.token_to_id(
         start_stop_tokens[1])
-    # Precompute the encoder output and reuse it for every step
     if config['attention_model'] == "transformer":
+        # Precompute the encoder output and reuse it for every step
         encoder_output = model.encode(source_data, source_mask)
-    # Initialize the decoder input with the sos token
-    decoder_input = torch.empty(1, 1).fill_(start_idx).type_as(source_data).to(device)
-    i = 0
-    Y_recurrent = []
-    ratio = conf.TransformerModelParams.d_model // conf.TransformerModelParams.H
-    s_n_1s = [
-        [
-            torch.zeros(ratio, ratio).unsqueeze(0).repeat(1, 1, 1)
-            for _ in range(conf.TransformerModelParams.H)
-        ] for _ in range(conf.TransformerModelParams.T)
-    ]
+        # Initialize the decoder input with the sos token
+        decoder_input = torch.empty(1, 1).fill_(start_idx).type_as(source_data).to(device)
+        while True:
+            if decoder_input.size(1) == max_len:
+                break
 
-    while True:
-        if decoder_input.size(1) == max_len:
-            break
+            # build mask for target
+            decoder_mask = causal_mask(decoder_input.size(1)).type_as(source_mask).to(device)
 
-        # build mask for target
-        decoder_mask = causal_mask(decoder_input.size(1)).type_as(source_mask).to(device)
-
-        # calculate output
-        if config['attention_model'] == "transformer":
+            # calculate output
             out = model.decode(encoder_output, source_mask, decoder_input, decoder_mask)
+
             # get next token
             prob = model.project(out[:, -1])
             _, next_token = torch.max(prob, dim=1)  # Greedy
             decoder_input = torch.cat(
                 [decoder_input, torch.empty(1, 1).type_as(source_data).fill_(next_token.item()).to(device)], dim=1
             )
-        else:
-            Y, s_ns = model.forward_recurrent(decoder_input[:, i], s_n_1s, i + 1)
-            Y_recurrent.append(Y)
-            s_n_1s = s_ns
 
-            Y_recurrent = torch.stack(Y_recurrent, dim=1)
+            if next_token == end_idx:
+                break
 
-            # test sample
-            next_token = torch.max(Y_recurrent, dim=1)
-
-        if next_token == end_idx:
-            break
-
-    return decoder_input.squeeze(0)
+        return decoder_input.squeeze(0)
+    else:
+        return model.custom_generate(r_decoder_input, max_new_tokens=max_len - len(source_data), bos_token_id=start_idx,
+                                     eos_token_id=end_idx)
 
 
 def run_validation(model, config, validation_ds: DataLoader,
@@ -94,12 +78,13 @@ def run_validation(model, config, validation_ds: DataLoader,
         for batch in validation_ds:
             count += 1
             encoder_input = batch["encoder_input"].to(device)  # (b, I)
+            r_decoder_input = batch["decoder_input"].to(device)
             encoder_mask = batch["encoder_mask"].to(device)  # (b, 1, 1, I)
 
             # check that the batch size is 1
             assert encoder_input.size(0) == 1, "Batch size must be 1 for validation"
 
-            model_out = greedy_decode(model, config, encoder_input, encoder_mask, tokenizer_tgt, start_stop_tokens,
+            model_out = greedy_decode(model, config, encoder_input, r_decoder_input, encoder_mask, tokenizer_tgt, start_stop_tokens,
                                       max_len,
                                       device)
 
@@ -402,8 +387,7 @@ def train_model(model):
                 decoder_output = model.decode(encoder_output, encoder_mask, decoder_input, decoder_mask)  # (B, O', D)
                 output = model.project(decoder_output)  # (B, O', D)
             else:
-                output = model(decoder_input)
-
+                output = model(decoder_input)[0]
             # Compare the output with the label
             label = batch['label'].to(device)  # (B, O')
 
@@ -424,11 +408,6 @@ def train_model(model):
 
             global_step += 1
 
-        # Run validation at the end of every epoch
-        run_validation(model, config, val_dataloader, tokenizer_tgt, config["start_stop_generating_tokens"],
-                       config["output_features"][0].max_len,
-                       device, lambda msg: batch_iterator.write(msg), global_step, writer)
-
         # Save the model at the end of every epoch
         model_filename = conf.get_weights_file_path(config, f"{epoch:02d}")
         torch.save({
@@ -437,6 +416,12 @@ def train_model(model):
             'optimizer_state_dict': optimizer.state_dict(),
             'global_step': global_step
         }, model_filename)
+
+        # Run validation at the end of every epoch
+        run_validation(model, config, val_dataloader, tokenizer_tgt, config["start_stop_generating_tokens"],
+                       config["output_features"][0].max_len,
+                       device, lambda msg: batch_iterator.write(msg), global_step, writer)
+
     return model
 
 

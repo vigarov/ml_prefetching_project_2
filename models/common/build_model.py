@@ -4,7 +4,8 @@ from torchscale.architecture.config import RetNetConfig
 from torchscale.architecture.retnet import RetNetDecoder
 
 import models.transformer.model as TransformerModel
-from models.retnet.retnet import RetNetCLM
+from models.retnet.configuration_retnet import load_config_from_json
+from models.retnet.modeling_retnet import RetNetForCausalLM
 
 
 def build_model(config, in_vocab_size: int, out_vocab_size: int, pos_in_len: int, pos_out_len: int, pad_token_id: int, eos_token_id: int):
@@ -63,17 +64,17 @@ def build_model(config, in_vocab_size: int, out_vocab_size: int, pos_in_len: int
         model = TransformerModel.Transformer(encoder, decoder, src_embed, tgt_embed, src_pos, tgt_pos, projection_layer)
 
     else:
-        # conf1 = load_config_from_json(f"../../models/retnet/configs/retnet-{config['model_size']}/config.json")
-        # conf1.vocab_size = in_vocab_size
-        # conf1.decoder_embed_dim = model_pms.d_model
-        # conf1.decoder_pos_len = pos_in_len
-        # conf1.decoder_num_layers = model_pms.T
-        # conf1.decoder_num_attention_heads = model_pms.H
-        # conf1.decoder_retention_heads = model_pms.H  #TODO is it the same?
-        # conf1.dropout = model_pms.dropout
-        # conf1.pad_token_id = pad_token_id
-        # conf1.eos_token_id = eos_token_id
-        # encoder = RetNetModel(conf1)
+        conf1 = load_config_from_json(f"../../models/retnet/configs/retnet-{config['model_size']}/config.json")
+        conf1.vocab_size = out_vocab_size
+        conf1.decoder_embed_dim = model_pms.d_model
+        conf1.decoder_pos_len = pos_out_len
+        conf1.decoder_num_layers = model_pms.T
+        conf1.decoder_num_attention_heads = model_pms.H
+        conf1.decoder_retention_heads = model_pms.H
+        conf1.dropout = model_pms.dropout
+        conf1.pad_token_id = pad_token_id
+        conf1.eos_token_id = eos_token_id
+        model = RetNetForCausalLM(conf1)
         #
         # conf2 = load_config_from_json(f"../../models/retnet/configs/retnet-{config['model_size']}/config.json")
         # conf2.vocab_size = out_vocab_size
@@ -95,8 +96,8 @@ def build_model(config, in_vocab_size: int, out_vocab_size: int, pos_in_len: int
         # model = RetNetEncoderDecoder(encoder, decoder, features=model_pms.d_model,
         #                              cross_attention_block=decoder_cross_attention_block,
         #                              dropout=model_pms.dropout, projection_layer=projection_layer)
-
-        model = RetNetCLM(model_pms.T, model_pms.d_model, model_pms.d_ff, model_pms.H, out_vocab_size)
+        #
+        # model = RetNetCLM(model_pms.T, model_pms.d_model, model_pms.d_ff, model_pms.H, out_vocab_size)
 
     # Initialize the parameters
     for p in model.parameters():
