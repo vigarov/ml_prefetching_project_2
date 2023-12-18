@@ -3,10 +3,13 @@ import subprocess
 import shutil
 from pathlib import Path
 import re
+import time
 
 def parse_arguments():
     parser = argparse.ArgumentParser(description="Execute mycommand and copy files with a specific prefix.")
-    parser.add_argument('-o', '--output', help='Output directory',default=".")
+    parser.add_argument('-o', '--output', help='Output directory. Can contain !BN! to denote the current '
+                                               '(paresec) benchmark name (will evaluate to empty string if not found, '
+                                               'and !TST! for a timestamp.',default=".")
     parser.add_argument('-p', '--prefix', help='Prefix of outputs',default="fltrace-data-")
     parser.add_argument("-f","--fltrace-path", help="Path to fltrace", default="~/fltrace/fltrace")
     parser.add_argument('total_max_memory', type=int, help='Total max memory used by subprocess')
@@ -16,6 +19,13 @@ def parse_arguments():
     args = parser.parse_args()
     if args.output[-1] != '/':
         args.output+='/'
+    KNOWN_BENCHES = ["canneal","ferret","facesim","bodytrack","dedup","fluidanimate","raytrace","streamcluster"]
+    args.benchmark_name = ''
+    for b in KNOWN_BENCHES:
+        if b in args.parsec_exec:
+            args.benchmark_name = b
+            break
+    args.output = args.output.replace('!BN!',args.benchmark_name).replace('!TST!',time.strftime("%Y%m%d-%H%M%S"))
     print(args.parsec_exec)
     p = Path(args.fltrace_path)
     assert p.exists() and p.is_file()
