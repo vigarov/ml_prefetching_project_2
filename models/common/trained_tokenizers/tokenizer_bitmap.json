@@ -1,0 +1,62 @@
+{
+  "version": "1.0",
+  "truncation": null,
+  "padding": null,
+  "added_tokens": [
+    {
+      "id": 0,
+      "content": "[UNK]",
+      "single_word": false,
+      "lstrip": false,
+      "rstrip": false,
+      "normalized": false,
+      "special": true
+    }
+  ],
+  "normalizer": null,
+  "pre_tokenizer": {
+    "type": "Whitespace"
+  },
+  "post_processor": null,
+  "decoder": null,
+  "model": {
+    "type": "BPE",
+    "dropout": null,
+    "unk_token": "[UNK]",
+    "continuing_subword_prefix": null,
+    "end_of_word_suffix": null,
+    "fuse_unk": false,
+    "byte_fallback": false,
+    "vocab": {
+      "[UNK]": 0,
+      "0": 1,
+      "1": 2,
+      "10": 3,
+      "1010": 4,
+      "100": 5,
+      "1001010": 6,
+      "101": 7,
+      "1001010101": 8,
+      "1001010100": 9,
+      "10100": 10,
+      "11010": 11,
+      "1101010100": 12,
+      "00": 13,
+      "10000": 14
+    },
+    "merges": [
+      "1 0",
+      "10 10",
+      "10 0",
+      "100 1010",
+      "10 1",
+      "1001010 101",
+      "1001010 100",
+      "1010 0",
+      "1 1010",
+      "11010 10100",
+      "0 0",
+      "100 00"
+    ]
+  }
+}
