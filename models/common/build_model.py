@@ -62,7 +62,7 @@ def build_model(config, in_vocab_size: int, out_vocab_size: int, pos_in_len: int
         model = TransformerModel.Transformer(encoder, decoder, src_embed, tgt_embed, src_pos, tgt_pos, projection_layer)
 
     else:
-        conf = load_config_from_json(f"../../models/retnet/configs/retnet-{config['model_size']}/config.json")
+        conf = load_config_from_json(f"models/retnet/configs/retnet-{config['model_size']}/config.json")
         conf.vocab_size = out_vocab_size
         conf.decoder_embed_dim = model_pms.d_model
         conf.decoder_num_layers = model_pms.T

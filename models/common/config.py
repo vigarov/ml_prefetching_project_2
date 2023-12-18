@@ -2,7 +2,7 @@ from pathlib import Path
 from dataclasses import dataclass
 import re
 
-DATA_PATH = "../transformer/data/processed/"
+DATA_PATH = "data/processed/"
 GENERATOR_PREFIX = "gen"
 SEED_FN = "rand_seed.pt"
 STATE_FN = "state.pt"
@@ -65,7 +65,7 @@ def get_config(model=None, past_window=None, k_predictions=None):
         "datasource": "canneal",  # Global
         "model_folder": "models",  # Global
         "preload": "latest",  # Global
-        "tokenizer_files": "trained_tokenizers/tokenizer_{0}.json",  # Global
+        "tokenizer_files": "models/common/trained_tokenizers/tokenizer_{0}.json",  # Global
         "train_test_split": 0.75,  # Training hyperparameter
         "attention_model": "transformer" if model is None else model,  # Model hyperparameter, choose with "retnet"
         "attention_model_params": TransformerModelParams(),  # Model hyperparameter
