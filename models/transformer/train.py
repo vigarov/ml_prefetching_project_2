@@ -26,7 +26,7 @@ from trained_tokenizers import special_tokenizers as st
 
 import torchmetrics
 from torch.utils.tensorboard import SummaryWriter
-
+from sklearn.metrics import accuracy_score, f1_score, precision_score, recall_score
 
 def greedy_decode(model,
                   source_data_list: list[torch.Tensor],
@@ -140,7 +140,74 @@ def run_validation(model, validation_ds: DataLoader,
         acc = sum(acc) / len(acc)
         writer.add_scalar('validation accuracy', acc, global_step)
         writer.flush()
+        # Compute the accuracy metric
+        new_pred = [set(a.split(" ")) for a in predicted]
+        new_expected = [set(a.split(" ")) for a in expected]
+        acc = [len(a.intersection(b))/len(a) for a,b in zip(new_pred, new_expected)]
+        acc = sum(acc) / len(acc)
+        writer.add_scalar('validation accuracy', acc, global_step)
+        writer.flush()
 
+        # Compute the sklearn accuracy (?)
+        avg_acc = 0
+        for i, prex in enumerate(zip(predicted, expected)):
+            pred = prex[0].split(" ")
+            exp = prex[1].split(" ")
+            exp = list(filter(lambda x: len(x) > 1, exp))
+            pred = list(filter(lambda x: len(x) > 1, pred))
+            if len(pred) < 10:
+                pred.extend([''] * (10-len(pred)))
+            if len(exp) < len(pred):
+                exp.extend([''] * (len(pred)-len(exp)))
+            avg_acc += accuracy_score(exp,pred)
+        avg_acc /= len(expected)
+        writer.add_scalar("sklearn acc", avg_acc, global_step)
+        writer.flush()
+
+        avg_f1 = 0
+        for i, prex in enumerate(zip(predicted, expected)):
+            pred = prex[0].split(" ")
+            exp = prex[1].split(" ")
+            exp = list(filter(lambda x: len(x) > 1, exp))
+            pred = list(filter(lambda x: len(x) > 1, pred))
+            if len(pred) < 10:
+                pred.extend([''] * (10-len(pred)))
+            if len(exp) < len(pred):
+                exp.extend([''] * (len(pred)-len(exp)))
+            avg_f1 += f1_score(exp, pred, average="micro")
+        avg_f1 /= len(expected)
+        writer.add_scalar("f1", avg_f1, global_step)
+        writer.flush()
+
+        avg_precision = 0
+        for i, prex in enumerate(zip(predicted, expected)):
+            pred = prex[0].split(" ")
+            exp = prex[1].split(" ")
+            exp = list(filter(lambda x: len(x) > 1, exp))
+            pred = list(filter(lambda x: len(x) > 1, pred))
+            if len(pred) < 10:
+                pred.extend([''] * (10-len(pred)))
+            if len(exp) < len(pred):
+                exp.extend([''] * (len(pred)-len(exp)))
+            avg_precision += precision_score(exp, pred, average="micro")
+        avg_f1 /= len(expected)
+        writer.add_scalar("precision", avg_precision, global_step)
+        writer.flush()
+
+        avg_recall = 0
+        for i, prex in enumerate(zip(predicted, expected)):
+            pred = prex[0].split(" ")
+            exp = prex[1].split(" ")
+            exp = list(filter(lambda x: len(x) > 1, exp))
+            pred = list(filter(lambda x: len(x) > 1, pred))
+            if len(pred) < 10:
+                pred.extend([''] * (10-len(pred)))
+            if len(exp) < len(pred):
+                exp.extend([''] * (len(pred)-len(exp)))
+            avg_recall += recall_score(exp, pred, average="micro")
+        avg_f1 /= len(expected)
+        writer.add_scalar("recall", avg_recall, global_step)
+        writer.flush()
 
 def get_tokenizers(config) -> ((st.ConcatTokenizer | list[st.TokenizerWrapper]), st.TokenizerWrapper):
     SPACE_SPLITTER = st.Splitter(lambda input_str: input_str.split(), config["list_elem_separation_token"])
