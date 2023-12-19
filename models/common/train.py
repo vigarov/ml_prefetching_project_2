@@ -80,8 +80,6 @@ def run_validation(model, config, validation_ds: DataLoader,
         for batch in validation_ds:
             count += 1
             encoder_input = batch["encoder_input"].to(device)  # (b, I)
-            r_decoder_input = batch["decoder_input"].to(device)
-            tokenizer_tgt.decode(SimpleTokenIdList(r_decoder_input.detach().cpu().numpy().tolist()))
             encoder_mask = batch["encoder_mask"].to(device)  # (b, 1, 1, I)
 
             # check that the batch size is 1
@@ -407,6 +405,9 @@ def train_model(model):
             # Update the weights
             optimizer.step()
             optimizer.zero_grad(set_to_none=True)
+            run_validation(model, config, val_dataloader, tokenizer_tgt, config["start_stop_generating_tokens"],
+                           config["output_features"][0].max_len,
+                           device, lambda msg: batch_iterator.write(msg), global_step, writer)
 
             global_step += 1
         # Save the model at the end of every epoch
@@ -419,7 +420,7 @@ def train_model(model):
         }, model_filename)
 
         # Run validation at the end of every epoch
-        run_validation(model, config, val_dataloader, tokenizer_tgt, config["start_stop_generating_tokens"],
+        run_validation(model, config, val_dataloader, tokenizer_src, config["start_stop_generating_tokens"],
                        config["output_features"][0].max_len,
                        device, lambda msg: batch_iterator.write(msg), global_step, writer)
 
