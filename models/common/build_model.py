@@ -63,7 +63,7 @@ def build_model(config, in_vocab_size: int, out_vocab_size: int, pos_in_len: int
 
     else:
         conf = load_config_from_json(f"models/retnet/configs/retnet-{config['model_size']}/config.json")
-        conf.vocab_size = out_vocab_size
+        conf.vocab_size = in_vocab_size
         conf.decoder_embed_dim = model_pms.d_model
         conf.decoder_num_layers = model_pms.T
         conf.decoder_num_attention_heads = model_pms.H
