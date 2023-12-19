@@ -393,7 +393,6 @@ def train_model(model):
                 output = model(encoder_input)[0]  # (B, O', D)
             # Compare the output with the label
             label = batch['label'].to(device)  # (B, O')
-
             # Compute the loss using a simple cross entropy
             loss = loss_fn(output.view(-1, tokenizer_tgt.get_vocab_size()), label.view(-1))
             batch_iterator.set_postfix({"loss": f"{loss.item():6.3f}"})
