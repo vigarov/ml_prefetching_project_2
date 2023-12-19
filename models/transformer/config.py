@@ -128,7 +128,7 @@ def get_config():
         assert "raw" in DATA_PATH
         assert config["train_on_trace"] in ["one_smallest","all"] # TODO change
         for item in Path(DATA_PATH).iterdir():
-            if item.is_dir() and item.name == config["datasource"]:
+            if item.is_dir() and item.name.startswith(config["datasource"]):
                 # This is our dir
                 train_type = config["train_on_trace"]
                 if train_type == "one_smallest":
