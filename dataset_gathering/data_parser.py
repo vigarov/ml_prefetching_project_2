@@ -4,9 +4,7 @@ from pathlib import Path
 import ast
 import re
 
-from enum import Enum
-import os
-import sys
+import swifter
 import subprocess
 from dataclasses import dataclass, field
 
@@ -63,12 +61,12 @@ def process_bpftrace(preprocessed_file :str, source_window:int, pred_window:int,
 
     df = build_history(df, page_mask, pred_window, source_window)
 
-    df["ip"] = df["ip"].apply(lambda ip_int: hex(ip_int))
-    df["ustack"] = df["ustack"].apply(lambda ustack_str: ustack_str.replace('"', '').strip())
-    df["regs"] = df["regs"].apply(lambda regs_array: ' '.join(["0x" + hex(reg)[2:].zfill(2) for reg in ast.literal_eval(
+    df["ip"] = df["ip"].swifter.apply(lambda ip_int: hex(ip_int))
+    df["ustack"] = df["ustack"].swifter.apply(lambda ustack_str: ustack_str.replace('"', '').strip())
+    df["regs"] = df["regs"].swifter.apply(lambda regs_array: ' '.join(["0x" + hex(reg)[2:].zfill(2) for reg in ast.literal_eval(
         regs_array.replace('"',
                            ''))]))  # have regs in hex, makes more sense and reduces input size/dimension post tokenization
-    df["flags"] = df["flags"].apply(lambda flag: format(flag,
+    df["flags"] = df["flags"].swifter.apply(lambda flag: format(flag,
                                                         "016b"))  # flags are bitmaps,  might be easier to interpret if we spell them out as such
 
     # Drop first column = index added by preprocessor
@@ -84,7 +82,7 @@ def build_history(df, page_mask, pred_window_size, source_window_size,
                   address_column_name: str = "address", address_base:int = 10, output_column_name: str = "y"):
     y = []
     if page_mask:
-        df[address_column_name] = df[address_column_name].apply(lambda address: get_page_address(int(address,address_base)))
+        df[address_column_name] = df[address_column_name].swifter.apply(lambda address: get_page_address(int(address,address_base)))
     # Build history
     running_past_window = [hex(a) for a in df[address_column_name][:source_window_size]]
     running_future_window = [hex(a) for a in
@@ -227,12 +225,12 @@ def get_objdump_object(objdump_dir:str|None,binary_file):
             objdump_out = f.read()
     objdump = ObjDump()
     current_section = None
-    change_of_data_section = False
+    new_big_section = False
     for line in objdump_out.split("\n")[3:]:
         if line is None:
             continue
         elif line.startswith("Disassembly of section"):
-            change_of_data_section = True
+            new_big_section = True
         elif line.strip() != '':
             if line[0].isnumeric():
                 # We're starting a new section
@@ -242,11 +240,11 @@ def get_objdump_object(objdump_dir:str|None,binary_file):
                 raw_start, raw_name = splitted[0], splitted[1]
                 assert raw_start.isalnum() and '<' in raw_name and '>' in raw_name
                 curr_add = int(raw_start, 16)
-                if current_section is not None and not change_of_data_section:
+                if current_section is not None:
                     # End previous section
-                    assert current_section.end_addr == curr_add
+                    assert new_big_section or current_section.end_addr == curr_add
                     objdump.sections.append(current_section)
-                change_of_data_section = False
+                new_big_section = False
                 # Start the new one
                 current_section = ObjDump_Section(start_addr=curr_add,
                                                   name=raw_name)  # .replace('<','').replace('>','')) ?
@@ -279,6 +277,8 @@ def get_objdump_object(objdump_dir:str|None,binary_file):
             # End Section
             last_asm_instr = current_section.asm_instructions[-1]
             current_section.end_addr = last_asm_instr.addr + len(last_asm_instr.hex_repr.split())
+    if objdump.sections[-1] != current_section:
+        objdump.sections.append(current_section)
     objdump.sections.sort(
         key=lambda section: section.start_addr)  # Should essentially not change the order, but juuuust in case
     return objdump
@@ -293,8 +293,11 @@ def get_surrounding_assembly(loe: LibOrExe, ip: int, window:tuple[int,int]) -> (
     objdump = loe.objdump
     address_section_idx = bisect_left(objdump.sections, ip, lo=0, hi=len(objdump.sections),
                                       key=lambda section: section.start_addr)
-    if objdump.sections[address_section_idx].start_addr != ip:
-        assert address_section_idx != 0 and objdump.sections[address_section_idx].start_addr > ip
+    if address_section_idx == len(objdump.sections):
+        address_section_idx-=1
+        assert objdump.sections[address_section_idx].start_addr <= ip < objdump.sections[address_section_idx].end_addr
+    elif objdump.sections[address_section_idx].start_addr != ip:
+        assert address_section_idx != 0 and objdump.sections[address_section_idx].start_addr >= ip
         address_section_idx -= 1
     ip_sect = objdump.sections[address_section_idx]
     assert ip_sect.start_addr <= ip < ip_sect.end_addr
@@ -315,7 +318,7 @@ def preprocess_fltrace(path_faults, path_procmap,objdump_dir,code_window:tuple[i
     df = df.drop(columns=["tstamp", "tid", "ip", "pages"])
     # Since we only have anonymous page faults, flags only informs us of whether the access was a read, write, or writeprotect
     # we don't really care about the latter --> parse only if read write
-    df["flags"] = df["flags"].apply(lambda flag: int(flag) & 0x1)
+    df["flags"] = df["flags"].swifter.apply(lambda flag: int(flag) & 0x1)
     df = df.rename(columns={"flags": "rW", "trace": "ips","addr":"address"})
     # get all unique ips
     iplists = df['ips'].str.split("|")
@@ -344,15 +347,13 @@ def preprocess_fltrace(path_faults, path_procmap,objdump_dir,code_window:tuple[i
     ips = ips.intersection(set().union(*[set(lib.ips) for lib in libs.values()]))
 
     # Remove the now incorrect ips from the traces
-    df["ips"] = df["ips"].apply(lambda ips_str: '|'.join([ip for ip in ips_str.split('|') if ip in ips]))
+    df["ips"] = df["ips"].swifter.apply(lambda ips_str: '|'.join([ip for ip in ips_str.split('|') if ip in ips]))
 
     for path, lib in libs.items():
         assert "fltrace.so" not in path
         # If there is an executable record (= memory region) for that lib/exec
         if sum([int('x' in record.perms) for record in lib.records]) > 0:
             lib.objdump = get_objdump_object(objdump_dir,lib.path)
-    ip_to_windows_cache = {}
-
     def instructions_lookup(ips):
         iplist = ips.split("|")
         if iplist[-1] == '':
@@ -367,7 +368,9 @@ def preprocess_fltrace(path_faults, path_procmap,objdump_dir,code_window:tuple[i
             ) for ip in iplist])
         return instrs
 
-    df['surr_insts'] = df['ips'].apply(instructions_lookup)
+
+    ip_to_windows_cache = {i:' '.join([str(ins) for ins in get_surrounding_assembly(libs[libmap[i]],int(i, 16),window=code_window)[0]]) for i in ips}
+    df['surr_insts'] = df['ips'].swifter.apply(lambda ipstr: ';'.join([ip_to_windows_cache[i] for i in ipstr.split('|')])) #instructions_lookup)
 
     # Final columns: address,rW,trace,surr_insts
     if save:
@@ -376,13 +379,13 @@ def preprocess_fltrace(path_faults, path_procmap,objdump_dir,code_window:tuple[i
         return df
 
 
-def process_fltrace(preprocessed_file :str, objdump_dir: str ,source_window:int, pred_window:int, page_mask:bool, code_window:tuple[int,int] = (0,3), save: str | None = None):
+def process_fltrace(preprocessed_file_or_dir :str, objdump_dir: str, source_window:int, pred_window:int, page_mask:bool, code_window:tuple[int,int] = (0, 3), save: str | None = None):
     # page_mask is technically useless for us as address off fltrace already come as pages, but still included just to make sure
-    p = Path(preprocessed_file)
+    p = Path(preprocessed_file_or_dir)
     assert p.exists()
     if p.is_file():
         assert p.suffix == ".csv" and "prepro" in p.absolute().as_posix()
-        df = read_csv(preprocessed_file)
+        df = read_csv(preprocessed_file_or_dir)
     else:
         assert p.is_dir()
         fault_file,procmap_file = "",""
@@ -396,7 +399,7 @@ def process_fltrace(preprocessed_file :str, objdump_dir: str ,source_window:int,
 
     df = build_history(df, page_mask, pred_window, source_window,address_base=16)
 
-    df["ips"] = df["ips"].apply(lambda ip_str: ip_str.replace('|',' '))
+    df["ips"] = df["ips"].swifter.apply(lambda ip_str: ip_str.replace('|',' '))
 
     if save is not None:
         df.to_csv(save,index=False)
@@ -413,8 +416,8 @@ if __name__ == "__main__":
         process_bpftrace(p, 10, 10, True,
                          save="/home/vigarov/ml_prefetching_project_2/data/processed/processed_" + re.sub(r"v\d+\.\d+", f"v{str(PRO_VERSION)}",  Path(p).name))
     else:
-        p = "/home/vigarov/ml_prefetching_project_2/data/raw/fltrace_out/dedup/1000_600"
+        p = "/home/vigarov/ml_prefetching_project_2/data/raw/fltrace_out/canneal/300_60"
         objdump_dir = "/home/vigarov/ml_prefetching_project_2/data/objdumps"
         process_fltrace(p,objdump_dir,10,10,True,
-                        code_window=(0, 3),
+                        code_window=(-1, 2),
                         save="/home/vigarov/ml_prefetching_project_2/data/processed/processed_" + re.sub(r"v\d+\.\d+", f"v{str(PRO_VERSION)}",Path(p).name))

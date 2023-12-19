@@ -29,9 +29,11 @@ def build_bpe_tokenizer(config, df, feature_type,feature_list):
         create_tokenizer = ow == "y" or ow == "yes"
     if create_tokenizer:
         special_tokens = config["bpe_special_tokens"]
+        if "text" == feature_type:
+            special_tokens.append(';')
         tokenizer = Tokenizer(BPE(unk_token="[UNK]"))
         tokenizer.pre_tokenizer = Whitespace()  # doesn't matter, but helps for training!
-        trainer = BpeTrainer(special_tokens=special_tokens,min_frequency=MIN_FREQUENCY)
+        trainer = BpeTrainer(special_tokens=special_tokens,vocab_size=5000, min_frequency=3,max_token_length=10)
         iterable = df[[feature.name for feature in feature_list]].to_numpy().flatten()
         tokenizer.train_from_iterator(iterable, trainer=trainer)
         if "hex" in feature_type and FORCE_BYTE:
@@ -45,7 +47,7 @@ def get_data_frame(path, use_all_directory=True):
     input_path = Path(path)
     assert input_path.exists()
     if not use_all_directory:
-        assert input_path.is_file() and input_path.suffix == ".csv"
+        assert input_path.is_file() #and input_path.suffix == ".csv"
         df = read_csv(input_path.as_posix())
     else:
         if input_path.is_file():
@@ -61,7 +63,7 @@ def get_data_frame(path, use_all_directory=True):
 
 if __name__ == "__main__":
     config = get_config()
-    df = get_data_frame(config["data_path"], use_all_directory=True)
+    df = get_data_frame("/home/vigarov/ml_prefetching_project_2/data/processed/processed_300_60",use_all_directory=False)#config["data_path"], use_all_directory=True)
     assert "int64" not in df.dtypes
     # we don't care about lists for building, the wrappers will do the "hard work"
     # when we instantiate the tokenizers before training

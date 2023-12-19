@@ -2,7 +2,8 @@ from pathlib import Path
 from dataclasses import dataclass
 import re
 
-DATA_PATH = "data/prepro/"
+DATA_PATH = "data/raw/fltrace_out/"
+OBJDUMP_PATH = "data/objdumps/"
 GENERATOR_PREFIX = "gen"
 SEED_FN = "rand_seed.pt"
 STATE_FN = "state.pt"
@@ -33,13 +34,23 @@ FORCE_BYTE = True
 # output +1 only since we either have SOS (decoder input) or EOS (decoder ground truth)
 
 HEX_64_LEN = (8 if FORCE_BYTE else 16) + 1  # 1 for "0x"
+MAX_STACKTRACE_DEPTH = 32 # ?
 
-INPUT_FEATURES = [Feature("prev_faults", "hex_address_list",PAST_WINDOW*(HEX_64_LEN+1) - 1+2),
+BPF_FEATURES = [Feature("prev_faults", "hex_address_list",PAST_WINDOW*(HEX_64_LEN+1) - 1+2),
                   Feature("flags", "bitmap",18),
                   Feature("ip", "hex_address",HEX_64_LEN+2),
                   #Feature("ustack", "text",2048), # Commnent if not running on `gpu`, as you'll likely run OOM
                   Feature("regs", "hex_number_list",20*(HEX_64_LEN+1)-1)]
+FL_FEATURES = [
+    Feature("prev_faults", "hex_address_list",PAST_WINDOW*(HEX_64_LEN+1) - 1+2),
+    Feature("rW", "bit",2),
+    Feature("ips", "hex_address_list",MAX_STACKTRACE_DEPTH*(HEX_64_LEN+1)-1), # +1 -1 trick because space separated
+    Feature("surr_insts","text",512)
+    ]
+INPUT_FEATURES = FL_FEATURES
 OUTPUT_FEATURES = [Feature("y", "hex_address_list",K_PREDICTIONS*(HEX_64_LEN+1)-1 + 1)]
+
+TRACETYPE = "fltrace"  # Global, choose in between "fltrace", "bpftrace"
 
 @dataclass
 class TransformerModelParams:
@@ -69,15 +80,19 @@ def get_config():
         "batch_size": 8,  # Training hyperparameter
         "num_epochs": 50,  # Training hyperparameter
         "lr": 10 ** -4,  # Training hyperparameter
+        "trace_type": TRACETYPE,  # Global, choose in between "fltrace", "bpftrace"
+        "train_on_trace": "one_smallest", # Global hyperarameter [fltrace only]
         "datasource": "canneal",  # Global
+        "objdump_path": OBJDUMP_PATH,  # Global hyperparameter [fltrace only]
         "model_folder": "models",  # Global
         "preload": "latest",  # Global
-        "tokenizer_files": "trained_tokenizers/tokenizer_{0}.json",  # Global
+        "tokenizer_files": "trained_tokenizers/"+TRACETYPE+"/tokenizer_{0}.json",  # Global
         "train_test_split": 0.75,  # Training hyperparameter
         "attention_model": "transformer",  # Model hyperparameter, choose with "retnet"
         "attention_model_params" : TransformerModelParams(),  # Model hyperparameter
         "past_window": PAST_WINDOW,  # Model hyperparameter
-        "k_predictions": K_PREDICTIONS,  # Model Cuz they al
+        "k_predictions": K_PREDICTIONS,  # Model hyperparameter
+        "code_window": (1, 2),  # Model hyperparameter [fltrace only]
         "input_features": INPUT_FEATURES,  # Model hyperparameter
         "output_features": OUTPUT_FEATURES,  # Model hyperparameter
         "base_tokenizer": "hextet",  # Model hyperparameter, choose with "bpe", "text"
@@ -96,18 +111,31 @@ def get_config():
     assert ((config["base_tokenizer"] == "text" and config["embedding_technique"] == "onetext")
             or ((config["base_tokenizer"] in ["bpe","hextet"]) and config["embedding_technique"] in ["embed_concat","meta_transformer","tok_concat"]))
     max_path_version = 0.
-    for item in Path(DATA_PATH).iterdir():
-        if item.is_file():
-            matches = re.search(config["datasource"] + r"_v(\d+\.\d+)", item.name)
-            if matches is not None:
-                # We have a file that corresponds to data_source
-                version = matches.group(1)
-                if float(version) > max_path_version:
-                    max_path = item
-                    max_path_version = float(version)
-    assert max_path is not None and max_path_version > 0
-
-    config["data_path"] = max_path.absolute().as_posix()
+    if config["trace_type"] == "bpftrace":
+        for item in Path(DATA_PATH).iterdir():
+            if item.is_file():
+                matches = re.search(config["datasource"] + r"_v(\d+\.\d+)", item.name)
+                if matches is not None:
+                    # We have a file that corresponds to data_source
+                    version = matches.group(1)
+                    if float(version) > max_path_version:
+                        max_path = item
+                        max_path_version = float(version)
+        assert max_path is not None and max_path_version > 0
+        config["data_path"] = max_path.absolute().as_posix()
+    else:
+        assert config["trace_type"] == "fltrace"
+        assert "raw" in DATA_PATH
+        assert config["train_on_trace"] in ["one_smallest","all"] # TODO change
+        for item in Path(DATA_PATH).iterdir():
+            if item.is_dir() and item.name == config["datasource"]:
+                # This is our dir
+                train_type = config["train_on_trace"]
+                if train_type == "one_smallest":
+                    dir_of_interest = sorted(item.glob('*'),key=lambda p: int(p.name.split('_')[-1]))[0]
+                    config["data_path"] = dir_of_interest.absolute().as_posix()
+                else:
+                    raise NotImplementedError
 
     model_hash_features = ["attention_model", "past_window", "k_predictions", "input_features",
                            "embedding_technique","base_tokenizer","page_masked"]

@@ -8,6 +8,8 @@ from dataset import PageFaultDataset, causal_mask
 from config import get_config, get_weights_file_path, latest_weights_file_path, source_model_files, get_model_full_path, \
     SEED_FN, STATE_FN, GENERATOR_PREFIX, Feature
 
+from data_parser import process_fltrace,process_bpftrace
+
 import torchtext.datasets as datasets
 import torch
 import torch.nn as nn
@@ -334,8 +336,13 @@ def get_ds(config, generator) -> (
     if "processed" in config["data_path"]:
         df_raw = read_csv(config["data_path"])
     else:
-        df_raw = process(config["data_path"], config["past_window"], config["k_predictions"],config["page_masked"],
-                         save=False)  # load_dataset(f"{config['datasource']}", f"{config['lang_src']}-{config['lang_tgt']}", split='train')
+        trace_type = config["trace_type"]
+        if trace_type == "bpftrace":
+            df_raw = process_bpftrace(config["data_path"], config["past_window"], config["k_predictions"],config["page_masked"],
+                             save=None)  # load_dataset(f"{config['datasource']}", f"{config['lang_src']}-{config['lang_tgt']}", split='train')
+        else:
+            assert trace_type == "fltrace"
+            df_raw = process_fltrace(config["data_path"],config["objdump_path"],config["past_window"], config["k_predictions"],config["page_masked"],config["code_window"],save=None)
     df_raw = df_raw.astype({col: str for col in df_raw.columns if df_raw[col].dtype == "int64"})
     print("loaded data")
     # Build tokenizers
