@@ -44,8 +44,8 @@ BPF_FEATURES = [Feature("prev_faults", "hex_address_list",PAST_WINDOW*(HEX_64_LE
 FL_FEATURES = [
     Feature("prev_faults", "hex_address_list",64),#PAST_WINDOW*(HEX_64_LEN+1) - 1+2),
     Feature("rW", "bit",2),
-    Feature("ips", "hex_address_list",150),#MAX_STACKTRACE_DEPTH*(HEX_64_LEN+1)-1), # +1 -1 trick because space separated
-    Feature("surr_insts","text",1538)
+    Feature("ips", "hex_address_list",MAX_STACKTRACE_DEPTH*(HEX_64_LEN+1)-1), # +1 -1 trick because space separated
+    Feature("surr_insts","text",1800)
     ]
 INPUT_FEATURES = FL_FEATURES
 OUTPUT_FEATURES = [Feature("y", "hex_address_list",K_PREDICTIONS*(HEX_64_LEN+1)-1 + 1)]
