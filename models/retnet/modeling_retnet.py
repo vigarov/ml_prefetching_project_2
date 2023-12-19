@@ -1057,7 +1057,7 @@ class RetNetForCausalLM(RetNetPreTrainedModel):
             self.lm_head.weight, mean=0, std=config.decoder_embed_dim**-0.5
         )
 
-        self.resize_layer = CustomLinearReshapeNet(0,0) #added
+        self.resize_layer = CustomReshapeNet()
 
         self.post_init()
 
@@ -1333,6 +1333,27 @@ class CustomLinearReshapeNet(nn.Module):
 
         # Reshape to the desired output shape
         x = x.view(batch_size, 100, 262)
+
+        return x
+
+
+class CustomReshapeNet(nn.Module):
+    def __init__(self):
+        super(CustomReshapeNet, self).__init__()
+        # Define convolution and pooling layers
+        self.conv1 = nn.Conv2d(in_channels=1, out_channels=1, kernel_size=(3, 1), stride=(3, 1))
+        self.pool = nn.AvgPool2d(kernel_size=(4, 1), stride=(4, 1))
+
+    def forward(self, x):
+        # Temporarily add a channel dimension
+        x = x.unsqueeze(1)  # Shape becomes [8, 1, 332, 262]
+
+        # Apply convolution and pooling
+        x = self.conv1(x)
+        x = self.pool(x)
+
+        # Remove the channel dimension
+        x = x.squeeze(1)  # Shape becomes [8, 100, 262] or similar, depending on layer parameters
 
         return x
 
