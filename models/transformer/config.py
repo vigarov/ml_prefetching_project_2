@@ -77,9 +77,10 @@ def get_config():
         "list_elem_separation_token": " ",  # Global, tokenizers specific; be careful with that one, see comment in TokenizerWrapper of special_tokenizers.py
         "feature_separation_token": "[FSP]", # Global, tokenizers specific
         "start_stop_generating_tokens" : ["[GTR]","[GTP]"], # Global, tokenizers specific
-        "batch_size": 8,  # Training hyperparameter
-        "num_epochs": 50,  # Training hyperparameter
+        "batch_size": 16,  # Training hyperparameter
+        "num_epochs": 10,  # Training hyperparameter
         "lr": 10 ** -4,  # Training hyperparameter
+        "subsample": 1/400, # Training hyperparameter
         "trace_type": TRACETYPE,  # Global, choose in between "fltrace", "bpftrace"
         "train_on_trace": "one_smallest", # Global hyperarameter [fltrace only]
         "datasource": "canneal",  # Global

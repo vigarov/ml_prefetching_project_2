@@ -7,12 +7,15 @@ from trained_tokenizers import special_tokenizers as st
 class PageFaultDataset(Dataset):
     def __init__(self, config, df, indices_split,
                  input_tokenizer: st.ConcatTokenizer | list[st.TokenizerWrapper] | st.TokenizerWrapper,
-                 output_tokenizer: st.TokenizerWrapper):
+                 output_tokenizer: st.TokenizerWrapper,
+                 sample_percentage:float=1.00  # lower than 1 if you want to subsample
+                 ):
         self.input_features = config["input_features"]
         self.output_features = config["output_features"]
         self.input_view = df[[feature.name for feature in self.input_features]].iloc[indices_split]
         self.output_view = df[[feature.name for feature in self.output_features]].iloc[indices_split]
-        self.len = len(indices_split)
+        self.subsample_skip = (1/sample_percentage)-1
+        self.len = int(len(indices_split) * sample_percentage)
         self.base_tokenizer = config["base_tokenizer"]
         self.embedding_type = config["embedding_technique"]
         self.pad_token = config["pad_token"]
@@ -41,6 +44,7 @@ class PageFaultDataset(Dataset):
     def __getitem__(self, index) -> dict:
         if torch.is_tensor(index):
             index = index.toList()
+        index = [i+self.subsample_skip for i in index]
         raw_input, raw_output = self.input_view.iloc[index].values.flatten().tolist(), self.output_view.iloc[
             index].values.flatten().tolist()
         assert len(raw_output) == 1

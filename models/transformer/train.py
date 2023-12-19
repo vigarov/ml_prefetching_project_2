@@ -352,12 +352,17 @@ def get_ds(config, generator) -> (
     indices = torch.arange(
         len(df_raw))  # torch.randperm(len(df_raw), generator=generator)  # TODO think about overlapping pfault windows
 
+    subsample_rate = config["subsample"]
     train_ds = PageFaultDataset(config, df_raw, indices[:train_tensor_size],
                                 src_tokenizer,
-                                tgt_tokenizer)
+                                tgt_tokenizer,
+                                sample_percentage=subsample_rate
+                                )
     val_ds = PageFaultDataset(config, df_raw, indices[train_tensor_size:],
                               src_tokenizer,
-                              tgt_tokenizer)
+                              tgt_tokenizer,
+                              sample_percentage=subsample_rate
+                              )
 
     train_dataloader = DataLoader(train_ds, batch_size=config['batch_size'], shuffle=True)
     val_dataloader = DataLoader(val_ds, batch_size=1, shuffle=True)
