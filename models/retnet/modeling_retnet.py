@@ -1340,20 +1340,24 @@ class CustomLinearReshapeNet(nn.Module):
 class CustomReshapeNet(nn.Module):
     def __init__(self):
         super(CustomReshapeNet, self).__init__()
-        # Define convolution and pooling layers
-        self.conv1 = nn.Conv2d(in_channels=1, out_channels=1, kernel_size=(3, 1), stride=(3, 1))
-        self.pool = nn.AvgPool2d(kernel_size=(4, 1), stride=(4, 1))
+        # Convolutional layer for fine-tuning the size
+        self.conv = nn.Conv2d(1, 1, kernel_size=(3, 3), stride=(1, 1), padding=1)
 
     def forward(self, x):
-        # Temporarily add a channel dimension
-        x = x.unsqueeze(1)  # Shape becomes [8, 1, 332, 262]
+        # Add a dummy channel dimension
+        x = x.unsqueeze(1)  # [8, 1, 332, 781]
 
-        # Apply convolution and pooling
-        x = self.conv1(x)
-        x = self.pool(x)
+        # Interpolate to a size closer to the target
+        x = F.interpolate(x, size=(200, 524), mode='bilinear', align_corners=False)
+
+        # Apply the convolutional layer
+        x = self.conv(x)
+
+        # Resize to the final target size
+        x = F.interpolate(x, size=(100, 262), mode='bilinear', align_corners=False)
 
         # Remove the channel dimension
-        x = x.squeeze(1)  # Shape becomes [8, 100, 262] or similar, depending on layer parameters
+        x = x.squeeze(1)  # [8, 100, 262]
 
         return x
 
