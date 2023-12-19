@@ -2,9 +2,7 @@ import torch
 import torch.nn as nn
 import math
 
-import models.RetNet.retnet.configuration_retnet as RetNetConfig
-import models.RetNet.retnet.modeling_retnet as RetNetForCausalLM
-
+from config import MetaTransformerParams
 
 class LayerNormalization(nn.Module):
 
@@ -166,6 +164,7 @@ class TransformerEncoder(nn.Module):
         self.norm = LayerNormalization(features)
 
     def forward(self, x, mask):
+        x = x.to(torch.float32) # no-op for everything but meta-transformer
         for layer in self.layers:
             x = layer(x, mask)
         return self.norm(x)
@@ -216,29 +215,44 @@ class ProjectionLayer(nn.Module):
 
 class Transformer(nn.Module):
 
-    def __init__(self, encoder: TransformerEncoder, decoder: TransformerDecoder, src_embed: InputEmbeddings,
+    def __init__(self, encoder: TransformerEncoder, decoder: TransformerDecoder, src_embeds: nn.ModuleList, # list  of embeddings
                  tgt_embed: InputEmbeddings, src_pos: PositionalEncoding, tgt_pos: PositionalEncoding,
-                 projection_layer: ProjectionLayer) -> None:
+                 projection_layer: ProjectionLayer, meta_transformer_pms: MetaTransformerParams | None = None) -> None:
         super().__init__()
         self.encoder = encoder
         self.decoder = decoder
-        self.src_embed = src_embed
+        self.src_embeds = src_embeds
+        self.meta_transformer = None
+        if meta_transformer_pms is not None:
+            self.meta_transformer = TransformerEncoder(
+                    meta_transformer_pms.d_model,
+                    nn.ModuleList([EncoderBlock(
+                        meta_transformer_pms.d_model,
+                        MultiHeadAttentionBlock(meta_transformer_pms.d_model,meta_transformer_pms.H,meta_transformer_pms.dropout),
+                        FeedForwardBlock(meta_transformer_pms.d_model,meta_transformer_pms.d_ff,meta_transformer_pms.dropout),
+                        meta_transformer_pms.dropout
+                               ) for _ in range(meta_transformer_pms.T)])
+                )
         self.tgt_embed = tgt_embed
         self.src_pos = src_pos
         self.tgt_pos = tgt_pos
         self.projection_layer = projection_layer
 
-    def encode(self, src, src_mask):
-        # (batch, seq_len, d_model)
-        src = self.src_embed(src)
+    def encode(self, src_list : list[torch.Tensor], src_mask: torch.Tensor):
+        # src_list is of size (B, K, I); where K is the length of the "list"
+        assert len(src_list) == len(self.src_embeds)
+        all_embeddings = [embedder(tokens) for embedder,tokens in zip(self.src_embeds,src_list)]
+        src = torch.hstack(all_embeddings)  # Concat embedding
         src = self.src_pos(src)
+        if self.meta_transformer is not None:
+            src = self.meta_transformer(src,src_mask)
         return self.encoder(src, src_mask)
 
     def decode(self, encoder_output: torch.Tensor, src_mask: torch.Tensor, tgt: torch.Tensor, tgt_mask: torch.Tensor):
-        # (batch, seq_len, d_model)
-        tgt = self.tgt_embed(tgt)
-        tgt = self.tgt_pos(tgt)
-        return self.decoder(tgt, encoder_output, src_mask, tgt_mask)
+        # (B, O', D)
+        embeds = self.tgt_embed(tgt)
+        pos = self.tgt_pos(embeds)
+        return self.decoder(pos, encoder_output, src_mask, tgt_mask)
 
     def project(self, x):
         # (batch, seq_len, vocab_size)
@@ -246,22 +260,31 @@ class Transformer(nn.Module):
 
 
 # Returns either Transformer or RetNet
-def build_model(config, in_vocab_size: int, out_vocab_size: int, pos_in_len: int, pos_out_len: int):
+def build_model(config, in_vocab_size: int | list[int], out_vocab_size: int, pos_in_len: int | list[int], pos_out_len: int):
     # TODO: some things hereunder might be Transformer specific, and might need to be factorized when we implement RetNet
     model_pms = config["attention_model_params"]
     att_model = config["attention_model"]
 
     if att_model == "transformer":
-        embedding_type = config["embedding_technique"]
+
+        emb_type = config["embedding_technique"]
         # Create the embedding layers, differently depending on the embedding_technique
-        if embedding_type != "meta_transformer":  # TODO: this will have to change if we decide to implement "embed_concat"
+        if emb_type in ["tok_concat","onetext"]:
             # We will use one embedding for the concatenated tokens (the concat of the tokens will be
             # done afterwards/in Dataset). Note: caller must set src_vocab_size and target_vocab_size accordingly
-            src_embed = InputEmbeddings(model_pms.d_model, in_vocab_size)
-            tgt_embed = InputEmbeddings(model_pms.d_model, out_vocab_size)
+            src_embeds = nn.ModuleList([InputEmbeddings(model_pms.d_model, in_vocab_size)])
         else:
-            raise NotImplementedError
+            assert emb_type in ["embed_concat","meta_transformer"]
+            assert type(in_vocab_size) == list and type(pos_in_len) == list
+            src_embeds = nn.ModuleList([InputEmbeddings(model_pms.d_model, voc_size) for voc_size in in_vocab_size])
 
+            # "meta_transformer" and "embed_concat" also adds pos. encodings after the embedding, so all good
+            # (c.f. equation 7, section 3.3 of meta-transformer paper)
+            pos_in_len = sum(pos_in_len)
+
+        tgt_embed = InputEmbeddings(model_pms.d_model, out_vocab_size)
+
+        # Create the positional encoding layers
         src_pos = PositionalEncoding(model_pms.d_model, pos_in_len, model_pms.dropout)
         tgt_pos = PositionalEncoding(model_pms.d_model, pos_out_len, model_pms.dropout)
 
@@ -298,8 +321,10 @@ def build_model(config, in_vocab_size: int, out_vocab_size: int, pos_in_len: int
         # Create the projection layer
         projection_layer = ProjectionLayer(model_pms.d_model, out_vocab_size)
 
+
         # Create the transformer
         model = Transformer(encoder, decoder, src_embed, tgt_embed, src_pos, tgt_pos, projection_layer)
+
 
     else:
         conf = RetNetConfig.RetNetConfig(vocab_size=in_vocab_size,

@@ -5,3 +5,5 @@ torchmetrics
 tensorboard
 altair
 json5
+scikit-learn
+swifter
