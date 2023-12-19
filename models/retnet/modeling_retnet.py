@@ -1057,7 +1057,7 @@ class RetNetForCausalLM(RetNetPreTrainedModel):
             self.lm_head.weight, mean=0, std=config.decoder_embed_dim**-0.5
         )
 
-        # self.resize_layer = CustomLinearReshapeNet(0,0) #added
+        self.resize_layer = CustomLinearReshapeNet(0,0) #added
 
         self.post_init()
 
@@ -1139,7 +1139,7 @@ class RetNetForCausalLM(RetNetPreTrainedModel):
 
         hidden_states = outputs[0]
         logits = self.lm_head(hidden_states)
-        # logits = self.resize_layer(logits)
+        logits = self.resize_layer(logits)
         loss = None
         if labels is not None:
             # Shift so that tokens < n predict n
