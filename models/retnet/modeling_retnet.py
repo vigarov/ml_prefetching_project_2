@@ -1319,12 +1319,14 @@ class CustomLinearReshapeNet(nn.Module):
     def __init__(self, in_dims, out_dims):
         super(CustomLinearReshapeNet, self).__init__()
         # Define the linear layer
-        self.linear = nn.Linear(8*332 * 262, 8*100 * 262)
+        self.linear = nn.Linear(332 * 262, 100 * 262)
 
     def forward(self, x):
         # Flatten the tensor
+        print(x.shape)
         batch_size = x.shape[0]
         x = x.view(batch_size, -1)
+        print(x.shape)
 
         # Apply linear transformation
         x = self.linear(x)
