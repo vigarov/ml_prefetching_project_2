@@ -405,9 +405,6 @@ def train_model(model):
             # Update the weights
             optimizer.step()
             optimizer.zero_grad(set_to_none=True)
-            run_validation(model, config, val_dataloader, tokenizer_tgt, config["start_stop_generating_tokens"],
-                           config["output_features"][0].max_len,
-                           device, lambda msg: batch_iterator.write(msg), global_step, writer)
 
             global_step += 1
         # Save the model at the end of every epoch
