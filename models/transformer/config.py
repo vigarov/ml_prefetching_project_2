@@ -46,7 +46,7 @@ FL_FEATURES = [
     Feature("prev_faults", "hex_address_list",64),#PAST_WINDOW*(HEX_64_LEN+1) - 1+2),
     Feature("rW", "bit",2),
     Feature("ips", "hex_address_list",MAX_STACKTRACE_DEPTH*(HEX_64_LEN+1)-1), # +1 -1 trick because space separated
-    Feature("surr_insts","text",1800)
+    #Feature("surr_insts","text",1800)
     ]
 INPUT_FEATURES = FL_FEATURES
 OUTPUT_FEATURES = [Feature("y", "hex_address_list",K_PREDICTIONS*(HEX_64_LEN+1)-1 + 1)]
@@ -163,25 +163,25 @@ def get_config():
     return config
 
 
-def get_config(model_name=None, past_window=None, k_predictions=None):
-    config = get_default_config()
-    if model_name is not None:
-        config["attention_model"] = model_name
-    if past_window is not None:
-        config["past_window"] = past_window
-    if k_predictions is not None:
-        config["k_predictions"] = k_predictions
-    return config
+# def get_config(model_name=None, past_window=None, k_predictions=None):
+#     config = get_default_config()
+#     if model_name is not None:
+#         config["attention_model"] = model_name
+#     if past_window is not None:
+#         config["past_window"] = past_window
+#     if k_predictions is not None:
+#         config["k_predictions"] = k_predictions
+#     return config
 
 
-def get_all_configs():
-    configs = []
-    for model_name in ["transformer", "retnet"]:
-        for k_predictions in [1, 5, 10, 15, 20]:
-            for past_window in [10, 16, 32, 64, 512, 1024]:
-                config = get_config(model_name, past_window, k_predictions)
-                configs.append(config)
-    return configs
+# def get_all_configs():
+#     configs = []
+#     for model_name in ["transformer", "retnet"]:
+#         for k_predictions in [1, 5, 10, 15, 20]:
+#             for past_window in [10, 16, 32, 64, 512, 1024]:
+#                 config = get_config(model_name, past_window, k_predictions)
+#                 configs.append(config)
+#     return configs
 
 
 def get_model_full_path(config):
