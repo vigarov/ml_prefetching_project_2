@@ -1050,7 +1050,7 @@ class RetNetForCausalLM(RetNetPreTrainedModel):
             config, embed_tokens=embed_tokens, tensor_parallel=tensor_parallel
         )
         self.lm_head = nn.Linear(
-            config.decoder_embed_dim, config.vocab_size, bias=False
+            config.decoder_embed_dim, config.out_vocab_size #modified
         )
         # init here
         torch.nn.init.normal_(
@@ -1138,8 +1138,8 @@ class RetNetForCausalLM(RetNetPreTrainedModel):
         )
 
         hidden_states = outputs[0]
-        logits = self.lm_head(hidden_states)
-        logits = self.resize_layer(logits)
+        logits = self.resize_layer(hidden_states)
+        logits = self.lm_head(logits)
         loss = None
         if labels is not None:
             # Shift so that tokens < n predict n
@@ -1341,26 +1341,37 @@ class CustomReshapeNet(nn.Module):
     def __init__(self):
         super(CustomReshapeNet, self).__init__()
         # Convolutional layer for fine-tuning the size
-        self.conv = nn.Conv2d(1, 1, kernel_size=(3, 3), stride=(1, 1), padding=1)
+        self.conv = nn.Conv2d(1, 1, kernel_size=(30,1), stride=(1, 1), dilation=(8,1), padding=(0, 0))
 
     def forward(self, x):
-        # Add a dummy channel dimension
-        x = x.unsqueeze(1)  # [8, 1, 332, 781]
-
-        # Interpolate to a size closer to the target
-        x = F.interpolate(x, size=(200, 524), mode='bilinear', align_corners=False)
-
-        # Apply the convolutional layer
+        x = x.unsqueeze(1)  # [8, 1, 332, 512]
         x = self.conv(x)
-
-        # Resize to the final target size
-        x = F.interpolate(x, size=(100, 262), mode='bilinear', align_corners=False)
-
-        # Remove the channel dimension
-        x = x.squeeze(1)  # [8, 100, 262]
-
+        x = x.squeeze(1)  # [8, 100, 512]
         return x
 
+# class ConvInterpolateReshapeNet(nn.Module):
+#     def __init__(self):
+#         super(ConvInterpolateReshapeNet, self).__init__()
+#         # Convolutional layer for fine-tuning
+#         self.conv = nn.Conv2d(1, 1, kernel_size=(3, 1), stride=(1, 1), padding=(1, 0))
+#
+#     def forward(self, x):
+#         # Add a dummy channel dimension
+#         x = x.unsqueeze(1)  # [8, 1, 332, 512]
+#
+#         # Interpolate to an intermediate size (close to target size)
+#         x = F.interpolate(x, size=(110, 512), mode='bilinear', align_corners=False)
+#
+#         # Apply the convolutional layer
+#         x = self.conv(x)
+#
+#         # Final interpolation to get to the exact target size
+#         x = F.interpolate(x, size=(100, 512), mode='bilinear', align_corners=False)
+#
+#         # Remove the channel dimension
+#         x = x.squeeze(1)  # [8, 100, 512]
+#
+#         return x
 
 
 class RetNetForSequenceClassification(RetNetPreTrainedModel):

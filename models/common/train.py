@@ -407,6 +407,9 @@ def train_model(model):
             optimizer.zero_grad(set_to_none=True)
 
             global_step += 1
+            # run_validation(model, config, val_dataloader, tokenizer_tgt, config["start_stop_generating_tokens"],
+            #                config["output_features"][0].max_len,
+            #                device, lambda msg: batch_iterator.write(msg), global_step, writer)
         # Save the model at the end of every epoch
         model_filename = conf.get_weights_file_path(config, f"{epoch:02d}")
         torch.save({
@@ -417,7 +420,7 @@ def train_model(model):
         }, model_filename)
 
         # Run validation at the end of every epoch
-        run_validation(model, config, val_dataloader, tokenizer_src, config["start_stop_generating_tokens"],
+        run_validation(model, config, val_dataloader, tokenizer_tgt, config["start_stop_generating_tokens"],
                        config["output_features"][0].max_len,
                        device, lambda msg: batch_iterator.write(msg), global_step, writer)
 

@@ -37,6 +37,7 @@ class RetNetConfig(PretrainedConfig):
     layernorm_eps: float = 1e-6
     tie_word_embeddings: bool = False
     resize_layer_dim: int = 512,
+    out_vocab_size: int = 50257,
 
     def __init__(
             self,

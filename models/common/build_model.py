@@ -72,6 +72,7 @@ def build_model(config, in_vocab_size: int, out_vocab_size: int, pos_in_len: int
         conf.pad_token_id = pad_token_id
         conf.eos_token_id = eos_token_id
         conf.resize_layer_dim = pos_out_len
+        conf.out_vocab_size = out_vocab_size
         model = RetNetForCausalLM(conf)
         print(out_vocab_size, in_vocab_size, pos_out_len, pos_in_len)
 
