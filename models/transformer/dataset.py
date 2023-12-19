@@ -44,7 +44,11 @@ class PageFaultDataset(Dataset):
     def __getitem__(self, index) -> dict:
         if torch.is_tensor(index):
             index = index.toList()
-        index = [i+self.subsample_skip for i in index]
+        if type(index) == list:
+            index = [i+self.subsample_skip for i in index]
+        else:
+            # type = int
+            index += self.subsample_skip
         raw_input, raw_output = self.input_view.iloc[index].values.flatten().tolist(), self.output_view.iloc[
             index].values.flatten().tolist()
         assert len(raw_output) == 1
