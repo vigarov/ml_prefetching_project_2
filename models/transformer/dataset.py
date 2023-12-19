@@ -14,7 +14,7 @@ class PageFaultDataset(Dataset):
         self.output_features = config["output_features"]
         self.input_view = df[[feature.name for feature in self.input_features]].iloc[indices_split]
         self.output_view = df[[feature.name for feature in self.output_features]].iloc[indices_split]
-        self.subsample_skip = (1/sample_percentage)-1
+        self.subsample_skip = int(1/sample_percentage)-1
         self.len = int(len(indices_split) * sample_percentage)
         self.base_tokenizer = config["base_tokenizer"]
         self.embedding_type = config["embedding_technique"]
