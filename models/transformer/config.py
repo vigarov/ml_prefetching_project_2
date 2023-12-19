@@ -34,6 +34,7 @@ FORCE_BYTE = True
 # output +1 only since we either have SOS (decoder input) or EOS (decoder ground truth)
 
 HEX_64_LEN = (8 if FORCE_BYTE else 16) + 1  # 1 for "0x"
+
 MAX_STACKTRACE_DEPTH = 32 # ?
 
 BPF_FEATURES = [Feature("prev_faults", "hex_address_list",PAST_WINDOW*(HEX_64_LEN+1) - 1+2),
@@ -59,6 +60,9 @@ class TransformerModelParams:
     H: int = 8  # Num Attention heads per Transformer layer
     dropout: float = 0.1
     d_ff: int = 2048
+import torch
+
+DATASET_PATH = "/home/garvalov/ml_prefetching_project_2/data/canneal_v1.csv"  # change depending on which machine is running train.py
 
 @dataclass
 class MetaTransformerParams:
@@ -90,7 +94,7 @@ def get_config():
         "tokenizer_files": "trained_tokenizers/"+TRACETYPE+"/tokenizer_{0}.json",  # Global
         "train_test_split": 0.75,  # Training hyperparameter
         "attention_model": "transformer",  # Model hyperparameter, choose with "retnet"
-        "attention_model_params" : TransformerModelParams(),  # Model hyperparameter
+        "attention_model_params": TransformerModelParams(),  # Model hyperparameter
         "past_window": PAST_WINDOW,  # Model hyperparameter
         "k_predictions": K_PREDICTIONS,  # Model hyperparameter
         "code_window": (1, 2),  # Model hyperparameter [fltrace only]
@@ -157,6 +161,27 @@ def get_config():
     return config
 
 
+def get_config(model_name=None, past_window=None, k_predictions=None):
+    config = get_default_config()
+    if model_name is not None:
+        config["attention_model"] = model_name
+    if past_window is not None:
+        config["past_window"] = past_window
+    if k_predictions is not None:
+        config["k_predictions"] = k_predictions
+    return config
+
+
+def get_all_configs():
+    configs = []
+    for model_name in ["transformer", "retnet"]:
+        for k_predictions in [1, 5, 10, 15, 20]:
+            for past_window in [10, 16, 32, 64, 512, 1024]:
+                config = get_config(model_name, past_window, k_predictions)
+                configs.append(config)
+    return configs
+
+
 def get_model_full_path(config):
     return f"trainings/{config['datasource']}/{config['model_basename']}/"
 
@@ -178,3 +203,20 @@ def latest_weights_file_path(config):
         return None
     weights_files.sort()
     return str(weights_files[-1])
+
+
+def get_device():
+    device = "cuda" if torch.cuda.is_available() else "mps" if torch.has_mps or torch.backends.mps.is_available() else "cpu"
+    print("Using device:", device)
+    if (device == 'cuda'):
+        print(f"Device name: {torch.cuda.get_device_name(device.index)}")
+        print(f"Device memory: {torch.cuda.get_device_properties(device.index).total_memory / 1024 ** 3} GB")
+    elif (device == 'mps'):
+        print(f"Device name: <mps>")
+    else:
+        print("NOTE: If you have a GPU, consider using it for training.")
+        print(
+            "      On a Windows machine with NVidia GPU, check this video: https://www.youtube.com/watch?v=GMSjDTU8Zlc")
+        print(
+            "      On a Mac machine, run: pip3 install --pre torch torchvision torchaudio torchtext --index-url https://download.pytorch.org/whl/nightly/cpu")
+    return torch.device(device)

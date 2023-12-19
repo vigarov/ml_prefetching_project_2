@@ -1,6 +1,7 @@
 import torch
 import torch.nn as nn
 import math
+
 from config import MetaTransformerParams
 
 class LayerNormalization(nn.Module):
@@ -262,74 +263,75 @@ class Transformer(nn.Module):
 def build_model(config, in_vocab_size: int | list[int], out_vocab_size: int, pos_in_len: int | list[int], pos_out_len: int):
     # TODO: some things hereunder might be Transformer specific, and might need to be factorized when we implement RetNet
     model_pms = config["attention_model_params"]
-
-    emb_type = config["embedding_technique"]
-    # Create the embedding layers, differently depending on the embedding_technique
-    if emb_type in ["tok_concat","onetext"]:
-        # We will use one embedding for the concatenated tokens (the concat of the tokens will be
-        # done afterwards/in Dataset). Note: caller must set src_vocab_size and target_vocab_size accordingly
-        src_embeds = nn.ModuleList([InputEmbeddings(model_pms.d_model, in_vocab_size)])
-    else:
-        assert emb_type in ["embed_concat","meta_transformer"]
-        assert type(in_vocab_size) == list and type(pos_in_len) == list
-        src_embeds = nn.ModuleList([InputEmbeddings(model_pms.d_model, voc_size) for voc_size in in_vocab_size])
-
-        # "meta_transformer" and "embed_concat" also adds pos. encodings after the embedding, so all good
-        # (c.f. equation 7, section 3.3 of meta-transformer paper)
-        pos_in_len = sum(pos_in_len)
-
-    tgt_embed = InputEmbeddings(model_pms.d_model, out_vocab_size)
-
-    # Create the positional encoding layers
-    src_pos = PositionalEncoding(model_pms.d_model, pos_in_len, model_pms.dropout)
-    tgt_pos = PositionalEncoding(model_pms.d_model, pos_out_len, model_pms.dropout)
-
     att_model = config["attention_model"]
-    # Create the encoder blocks
-    encoder_blocks = []
-    for _ in range(model_pms.T):
-        if att_model == "transformer":
-            encoder_self_attention_block = MultiHeadAttentionBlock(model_pms.d_model, model_pms.H, model_pms.dropout)
+
+    if att_model == "transformer":
+
+        emb_type = config["embedding_technique"]
+        # Create the embedding layers, differently depending on the embedding_technique
+        if emb_type in ["tok_concat","onetext"]:
+            # We will use one embedding for the concatenated tokens (the concat of the tokens will be
+            # done afterwards/in Dataset). Note: caller must set src_vocab_size and target_vocab_size accordingly
+            src_embeds = nn.ModuleList([InputEmbeddings(model_pms.d_model, in_vocab_size)])
+        else:
+            assert emb_type in ["embed_concat","meta_transformer"]
+            assert type(in_vocab_size) == list and type(pos_in_len) == list
+            src_embeds = nn.ModuleList([InputEmbeddings(model_pms.d_model, voc_size) for voc_size in in_vocab_size])
+
+            # "meta_transformer" and "embed_concat" also adds pos. encodings after the embedding, so all good
+            # (c.f. equation 7, section 3.3 of meta-transformer paper)
+            pos_in_len = sum(pos_in_len)
+
+        tgt_embed = InputEmbeddings(model_pms.d_model, out_vocab_size)
+
+        # Create the positional encoding layers
+        src_pos = PositionalEncoding(model_pms.d_model, pos_in_len, model_pms.dropout)
+        tgt_pos = PositionalEncoding(model_pms.d_model, pos_out_len, model_pms.dropout)
+
+        # Create the positional encoding layers
+        # "meta_transformer" and "embed_concat" if we implement it also adds pos. encodings after the embedding, so no worries
+
+        # Create the encoder blocks
+        encoder_blocks = []
+        for _ in range(model_pms.T):
+            encoder_self_attention_block = MultiHeadAttentionBlock(model_pms.d_model, model_pms.H,
+                                                                   model_pms.dropout)
             feed_forward_block = FeedForwardBlock(model_pms.d_model, model_pms.d_ff, model_pms.dropout)
             encoder_block = EncoderBlock(model_pms.d_model, encoder_self_attention_block, feed_forward_block,
                                          model_pms.dropout)
-        else:
-            assert att_model == "retnet"
-            raise NotImplementedError
-        encoder_blocks.append(encoder_block)
+            encoder_blocks.append(encoder_block)
 
-    # Create the decoder blocks
-    decoder_blocks = []
-    for _ in range(model_pms.T):
-        if att_model == "transformer":
-            decoder_self_attention_block = MultiHeadAttentionBlock(model_pms.d_model, model_pms.H, model_pms.dropout)
-            decoder_cross_attention_block = MultiHeadAttentionBlock(model_pms.d_model, model_pms.H, model_pms.dropout)
+        # Create the decoder blocks
+        decoder_blocks = []
+        for _ in range(model_pms.T):
+            decoder_self_attention_block = MultiHeadAttentionBlock(model_pms.d_model, model_pms.H,
+                                                                   model_pms.dropout)
+            decoder_cross_attention_block = MultiHeadAttentionBlock(model_pms.d_model, model_pms.H,
+                                                                    model_pms.dropout)
             feed_forward_block = FeedForwardBlock(model_pms.d_model, model_pms.d_ff, model_pms.dropout)
             decoder_block = TransformerDecoderBlock(model_pms.d_model, decoder_self_attention_block,
                                                     decoder_cross_attention_block, feed_forward_block,
                                                     model_pms.dropout)
-        else:
-            raise NotImplementedError
-        decoder_blocks.append(decoder_block)
+            decoder_blocks.append(decoder_block)
 
-    # Create the encoder and decoder
-    if att_model == "transformer":
+        # Create the encoder and decoder
         encoder = TransformerEncoder(model_pms.d_model, nn.ModuleList(encoder_blocks))
         decoder = TransformerDecoder(model_pms.d_model, nn.ModuleList(decoder_blocks))
-    else:
-        raise NotImplementedError
 
-    # Create the projection layer
-    if att_model == "transformer":
+        # Create the projection layer
         projection_layer = ProjectionLayer(model_pms.d_model, out_vocab_size)
-    else:
-        raise NotImplementedError
 
-    # Create the transformer
-    if att_model == "transformer":
-        model = Transformer(encoder, decoder, src_embeds, tgt_embed, src_pos, tgt_pos, projection_layer)
+
+        # Create the transformer
+        model = Transformer(encoder, decoder, src_embed, tgt_embed, src_pos, tgt_pos, projection_layer)
+
+
     else:
-        raise NotImplementedError
+        conf = RetNetConfig.RetNetConfig(vocab_size=in_vocab_size,
+                                         decoder_embed_dim=model_pms.d_model,
+                                         decoder_retention_heads=model_pms.H, #TODO is it the same?
+                                         dropout=model_pms.dropout)
+        model = RetNetForCausalLM.RetNetForCausalLM(conf)
 
     # Initialize the parameters
     for p in model.parameters():

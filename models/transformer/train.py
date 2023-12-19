@@ -24,6 +24,7 @@ from pandas import read_csv
 
 from tokenizers import Tokenizer
 
+
 from trained_tokenizers import special_tokenizers as st
 
 import torchmetrics
@@ -65,6 +66,63 @@ def greedy_decode(model,
     return decoder_input.squeeze(0)
 
 
+def beam_search_decode(model, beam_size, source, source_mask, tokenizer_src, tokenizer_tgt, max_len, device):
+    sos_idx = tokenizer_tgt.token_to_id('[SOS]')
+    eos_idx = tokenizer_tgt.token_to_id('[EOS]')
+
+    # Precompute the encoder output and reuse it for every step
+    encoder_output = model.encode(source, source_mask)
+    # Initialize the decoder input with the sos token
+    decoder_initial_input = torch.empty(1, 1).fill_(sos_idx).type_as(source).to(device)
+
+    # Create a candidate list
+    candidates = [(decoder_initial_input, 1)]
+
+    while True:
+
+        # If a candidate has reached the maximum length, it means we have run the decoding for at least max_len iterations, so stop the search
+        if any([cand.size(1) == max_len for cand, _ in candidates]):
+            break
+
+        # Create a new list of candidates
+        new_candidates = []
+
+        for candidate, score in candidates:
+
+            # Do not expand candidates that have reached the eos token
+            if candidate[0][-1].item() == eos_idx:
+                continue
+
+            # Build the candidate's mask
+            candidate_mask = causal_mask(candidate.size(1)).type_as(source_mask).to(device)
+            # calculate output
+            out = model.decode(encoder_output, source_mask, candidate, candidate_mask)
+            # get next token probabilities
+            prob = model.project(out[:, -1])
+            # get the top k candidates
+            topk_prob, topk_idx = torch.topk(prob, beam_size, dim=1)
+            for i in range(beam_size):
+                # for each of the top k candidates, get the token and its probability
+                token = topk_idx[0][i].unsqueeze(0).unsqueeze(0)
+                token_prob = topk_prob[0][i].item()
+                # create a new candidate by appending the token to the current candidate
+                new_candidate = torch.cat([candidate, token], dim=1)
+                # We sum the log probabilities because the probabilities are in log space
+                new_candidates.append((new_candidate, score + token_prob))
+
+        # Sort the new candidates by their score
+        candidates = sorted(new_candidates, key=lambda x: x[1], reverse=True)
+        # Keep only the top k candidates
+        candidates = candidates[:beam_size]
+
+        # If all the candidates have reached the eos token, stop
+        if all([cand[0][-1].item() == eos_idx for cand, _ in candidates]):
+            break
+
+    # Return the best candidate
+    return candidates[0][0].squeeze()
+
+
 def run_validation(model, validation_ds: DataLoader,
                    tokenizer_tgt: st.TokenizerWrapper, start_stop_tokens: list,
                    max_len,
@@ -94,9 +152,13 @@ def run_validation(model, validation_ds: DataLoader,
             # check that the batch size is 1
             assert encoder_input_list[0].size(0) == 1, "Batch size must be 1 for validation"
 
-            model_out = greedy_decode(model, encoder_input_list, encoder_mask, tokenizer_tgt, start_stop_tokens, max_len,
-                                      device)
-
+            if algo_decode == "beam":
+                model_out = beam_search_decode(model, tetestest, encoder_input, encoder_mask, tokenizer_src, tokenizer_tgt,
+                                               max_len)
+            else:
+                model_out = greedy_decode(model, encoder_input_list, encoder_mask, tokenizer_tgt, start_stop_tokens, max_len,
+                                          device)
+                
             source_text = batch["src_text"][0]
             target_text = batch["tgt_text"][0]
             model_out_text = tokenizer_tgt.decode(SimpleTokenIdList(model_out.detach().cpu().numpy().tolist()))
@@ -329,7 +391,6 @@ def get_tokenizers(config) -> ((st.ConcatTokenizer | list[st.TokenizerWrapper]),
         inp_ret_dict = Tokenizer.from_file(tokenizer_path.absolute().as_posix())
         # TODO: Use gpt model or custom build bpe, can be loaded online; c.f. tokenizers doc
 
-
 def get_ds(config, generator) -> (
         DataLoader, DataLoader, (st.ConcatTokenizer | list[st.TokenizerWrapper]), st.TokenizerWrapper):
     # It only has the train split, so we divide it overselves
@@ -392,6 +453,7 @@ def get_model(config, inp_tokenizer: st.ConcatTokenizer | list[st.TokenizerWrapp
         inp_seq_len = [int(feature.max_len) for feature in used_features]
         # TODO: we might have to slightly adapt build_model for those two, which is why I am currently taking the tokenizers themselves as input
         # TODO cont: This might however not be needed, maybe we can do with only the different sizes/lengths
+
 
     model = build_model(config, src_vocab_size, out_vocab_size, inp_seq_len, out_seq_len)
     return model
@@ -530,7 +592,6 @@ def train_model(config,mass_training=False):
 
             global_step += 1
 
-        # Run validation at the end of every epoch
         run_validation(model, val_dataloader, tokenizer_tgt, config["start_stop_generating_tokens"],
                        config["output_features"][0].max_len,
                        device, lambda msg: batch_iterator.write(msg), global_step, writer)
@@ -544,6 +605,12 @@ def train_model(config,mass_training=False):
             'global_step': global_step
         }, model_filename)
         past_save_files.append(model_filename)
+
+def multi_config_train():
+    configs = get_all_configs()
+    for c in configs:
+        train_model(c)
+
 
 if __name__ == '__main__':
     warnings.filterwarnings("ignore")
