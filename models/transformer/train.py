@@ -1,20 +1,11 @@
-import copy
-from dataclasses import dataclass
-
 from trained_tokenizers.special_tokenizers import SimpleTokenIdList
 
 from model import build_model
 from dataset import PageFaultDataset, causal_mask
-from config import get_config, get_weights_file_path, latest_weights_file_path, source_model_files, get_model_full_path, \
-    SEED_FN, STATE_FN, GENERATOR_PREFIX, Feature
-
-from data_parser import process_fltrace,process_bpftrace
-
-import torchtext.datasets as datasets
+from config import *
 import torch
 import torch.nn as nn
-from torch.utils.data import Dataset, DataLoader, random_split
-from torch.optim.lr_scheduler import LambdaLR
+from torch.utils.data import DataLoader, random_split
 from data_parser import *
 import warnings
 from tqdm import tqdm
@@ -66,14 +57,19 @@ def greedy_decode(model,
     return decoder_input.squeeze(0)
 
 
-def beam_search_decode(model, beam_size, source, source_mask, tokenizer_src, tokenizer_tgt, max_len, device):
-    sos_idx = tokenizer_tgt.token_to_id('[SOS]')
-    eos_idx = tokenizer_tgt.token_to_id('[EOS]')
-
+def beam_search_decode(model,
+                       beam_size:int,
+                       source_data_list:list[torch.Tensor],
+                       source_mask,
+                       tokenizer_tgt:st.TokenizerWrapper, start_stop_tokens: list,
+                       max_len, device):
+    assert start_stop_tokens is not None and len(start_stop_tokens) == 2
+    start_idx, end_idx = tokenizer_tgt.token_to_id(start_stop_tokens[0]), tokenizer_tgt.token_to_id(
+        start_stop_tokens[1])
     # Precompute the encoder output and reuse it for every step
-    encoder_output = model.encode(source, source_mask)
+    encoder_output = model.encode(source_data_list, source_mask)
     # Initialize the decoder input with the sos token
-    decoder_initial_input = torch.empty(1, 1).fill_(sos_idx).type_as(source).to(device)
+    decoder_initial_input = torch.empty(1, 1).fill_(start_idx).type_as(source_data_list[0]).to(device)
 
     # Create a candidate list
     candidates = [(decoder_initial_input, 1)]
@@ -89,8 +85,8 @@ def beam_search_decode(model, beam_size, source, source_mask, tokenizer_src, tok
 
         for candidate, score in candidates:
 
-            # Do not expand candidates that have reached the eos token
-            if candidate[0][-1].item() == eos_idx:
+            # Do not expand candidates that have reached the EOS/END token
+            if candidate[0][-1].item() == end_idx:
                 continue
 
             # Build the candidate's mask
@@ -115,18 +111,19 @@ def beam_search_decode(model, beam_size, source, source_mask, tokenizer_src, tok
         # Keep only the top k candidates
         candidates = candidates[:beam_size]
 
-        # If all the candidates have reached the eos token, stop
-        if all([cand[0][-1].item() == eos_idx for cand, _ in candidates]):
+        # If all the candidates have reached the EOS/END token, stop
+        if all([cand[0][-1].item() == end_idx for cand, _ in candidates]):
             break
 
     # Return the best candidate
-    return candidates[0][0].squeeze()
+    return candidates[0][0].squeeze(0)
 
 
 def run_validation(model, validation_ds: DataLoader,
                    tokenizer_tgt: st.TokenizerWrapper, start_stop_tokens: list,
                    max_len,
-                   device, print_msg, global_step, writer, num_examples=3):
+                   decode_algorithm,
+                   device, print_msg, global_step, writer, num_examples=3,beam_size:int=3):
     model.eval()
     try:
         # get the console window width
@@ -152,10 +149,12 @@ def run_validation(model, validation_ds: DataLoader,
             # check that the batch size is 1
             assert encoder_input_list[0].size(0) == 1, "Batch size must be 1 for validation"
 
-            if algo_decode == "beam":
-                model_out = beam_search_decode(model, tetestest, encoder_input, encoder_mask, tokenizer_src, tokenizer_tgt,
-                                               max_len)
+            if decode_algorithm == "beam":
+                model_out = beam_search_decode(model, beam_size, encoder_input_list, encoder_mask,
+                                               tokenizer_tgt,start_stop_tokens,
+                                               max_len,device)
             else:
+                assert decode_algorithm == "greedy"
                 model_out = greedy_decode(model, encoder_input_list, encoder_mask, tokenizer_tgt, start_stop_tokens, max_len,
                                           device)
                 
@@ -593,8 +592,8 @@ def train_model(config,mass_training=False):
             global_step += 1
 
         run_validation(model, val_dataloader, tokenizer_tgt, config["start_stop_generating_tokens"],
-                       config["output_features"][0].max_len,
-                       device, lambda msg: batch_iterator.write(msg), global_step, writer)
+                       config["output_features"][0].max_len,config["decode_algorithm"],
+                       device, lambda msg: batch_iterator.write(msg), global_step, writer,beam_size=config["beam_size"])
 
         # Save the model at the end of every epoch
         model_filename = get_weights_file_path(config, f"{epoch:02d}")

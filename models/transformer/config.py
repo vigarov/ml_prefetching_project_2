@@ -95,6 +95,8 @@ def get_config():
         "train_test_split": 0.75,  # Training hyperparameter
         "attention_model": "transformer",  # Model hyperparameter, choose with "retnet"
         "attention_model_params": TransformerModelParams(),  # Model hyperparameter
+        "decode_algorithm": "beam",  # Model hyperparameter, choose with "greedy"
+        "beam_size": 4,  # Model hyperparameter [beam decode only]
         "past_window": PAST_WINDOW,  # Model hyperparameter
         "k_predictions": K_PREDICTIONS,  # Model hyperparameter
         "code_window": (1, 2),  # Model hyperparameter [fltrace only]
