@@ -323,7 +323,7 @@ def build_model(config, in_vocab_size: int | list[int], out_vocab_size: int, pos
 
 
         # Create the transformer
-        model = Transformer(encoder, decoder, src_embed, tgt_embed, src_pos, tgt_pos, projection_layer)
+        model = Transformer(encoder, decoder, src_embeds, tgt_embed, src_pos, tgt_pos, projection_layer)
 
 
     else:
