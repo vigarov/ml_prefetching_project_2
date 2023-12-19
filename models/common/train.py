@@ -54,7 +54,7 @@ def greedy_decode(model, config,
         return decoder_input.squeeze(0)
     else:
         return model.custom_generate(source_data, max_new_tokens=max_len - len(source_data), bos_token_id=start_idx,
-                                     eos_token_id=end_idx)
+                                     eos_token_id=end_idx, parallel_compute_prompt=False, do_sample=True)
 
 
 def run_validation(model, config, validation_ds: DataLoader,
@@ -378,9 +378,11 @@ def train_model(model):
         batch_iterator = tqdm(train_dataloader, desc=f"Processing Epoch {epoch:02d}")
         for batch in batch_iterator:
             encoder_input = batch['encoder_input'].to(device)  # (B, I)
+            decoder_input = batch['decoder_input'].to(device)  # (B, O')
+            label = batch['label'].to(device)  # (B, O')
             if config['attention_model'] == "transformer":
                 # Get the tensors from the batch
-                decoder_input = batch['decoder_input'].to(device)  # (B, O')
+
                 encoder_mask = batch['encoder_mask'].to(device)  # (B, 1, 1, I)
                 decoder_mask = batch['decoder_mask'].to(device)  # (B, 1, O', O')
                 # Run the tensors through the encoder, decoder and the projection layer
@@ -388,11 +390,12 @@ def train_model(model):
                 decoder_output = model.decode(encoder_output, encoder_mask, decoder_input, decoder_mask)  # (B, O', D)
                 output = model.project(decoder_output)  # (B, O', D)
             else:
-                output = model(encoder_input)[0]  # (B, O', D)
+                output = model(input_ids=encoder_input)[0]  # (B, O', D)
             # Compare the output with the label
-            label = batch['label'].to(device)  # (B, O')
+
             # Compute the loss using a simple cross entropy
-            loss = loss_fn(output.view(-1, tokenizer_tgt.get_vocab_size()), label.view(-1))
+
+            loss = loss_fn(output.view(-1, tokenizer_tgt.get_vocab_size()), decoder_input.view(-1))
             batch_iterator.set_postfix({"loss": f"{loss.item():6.3f}"})
 
             # Log the loss
@@ -407,9 +410,6 @@ def train_model(model):
             optimizer.zero_grad(set_to_none=True)
 
             global_step += 1
-            # run_validation(model, config, val_dataloader, tokenizer_tgt, config["start_stop_generating_tokens"],
-            #                config["output_features"][0].max_len,
-            #                device, lambda msg: batch_iterator.write(msg), global_step, writer)
         # Save the model at the end of every epoch
         model_filename = conf.get_weights_file_path(config, f"{epoch:02d}")
         torch.save({
