@@ -42,10 +42,10 @@ BPF_FEATURES = [Feature("prev_faults", "hex_address_list",PAST_WINDOW*(HEX_64_LE
                   #Feature("ustack", "text",2048), # Commnent if not running on `gpu`, as you'll likely run OOM
                   Feature("regs", "hex_number_list",20*(HEX_64_LEN+1)-1)]
 FL_FEATURES = [
-    Feature("prev_faults", "hex_address_list",PAST_WINDOW*(HEX_64_LEN+1) - 1+2),
+    Feature("prev_faults", "hex_address_list",64),#PAST_WINDOW*(HEX_64_LEN+1) - 1+2),
     Feature("rW", "bit",2),
-    Feature("ips", "hex_address_list",MAX_STACKTRACE_DEPTH*(HEX_64_LEN+1)-1), # +1 -1 trick because space separated
-    Feature("surr_insts","text",512)
+    Feature("ips", "hex_address_list",150),#MAX_STACKTRACE_DEPTH*(HEX_64_LEN+1)-1), # +1 -1 trick because space separated
+    Feature("surr_insts","text",1538)
     ]
 INPUT_FEATURES = FL_FEATURES
 OUTPUT_FEATURES = [Feature("y", "hex_address_list",K_PREDICTIONS*(HEX_64_LEN+1)-1 + 1)]
