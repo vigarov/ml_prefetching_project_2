@@ -43,7 +43,7 @@ BPF_FEATURES = [Feature("prev_faults", "hex_address_list",PAST_WINDOW*(HEX_64_LE
                   #Feature("ustack", "text",2048), # Commnent if not running on `gpu`, as you'll likely run OOM
                   Feature("regs", "hex_number_list",20*(HEX_64_LEN+1)-1)]
 FL_FEATURES = [
-    Feature("prev_faults", "hex_address_list",64),#PAST_WINDOW*(HEX_64_LEN+1) - 1+2),
+    Feature("prev_faults", "hex_address_list",96),#PAST_WINDOW*(HEX_64_LEN+1) - 1+2),
     Feature("rW", "bit",2),
     Feature("ips", "hex_address_list",MAX_STACKTRACE_DEPTH*(HEX_64_LEN+1)-1), # +1 -1 trick because space separated
     #Feature("surr_insts","text",1800)
@@ -56,10 +56,10 @@ TRACETYPE = "fltrace"  # Global, choose in between "fltrace", "bpftrace"
 @dataclass
 class TransformerModelParams:
     d_model: int = 512
-    T: int = 6  # Num Transformer blocks layers
-    H: int = 8  # Num Attention heads per Transformer layer
+    T: int = 3  # Num Transformer blocks layers
+    H: int = 4  # Num Attention heads per Transformer layer
     dropout: float = 0.1
-    d_ff: int = 2048
+    d_ff: int = 1028
 import torch
 
 DATASET_PATH = "/home/garvalov/ml_prefetching_project_2/data/canneal_v1.csv"  # change depending on which machine is running train.py
@@ -70,7 +70,7 @@ class MetaTransformerParams:
     d_model: int = 512
     T: int = 2
     H: int = 2
-    dropout: float = 0.
+    dropout: float = 0.1
     d_ff: int = 512
 
 
@@ -84,10 +84,10 @@ def get_config():
         "batch_size": 16,  # Training hyperparameter
         "num_epochs": 10,  # Training hyperparameter
         "lr": 10 ** -4,  # Training hyperparameter
-        "subsample": 1/400, # Training hyperparameter
         "trace_type": TRACETYPE,  # Global, choose in between "fltrace", "bpftrace"
-        "train_on_trace": "one_smallest", # Global hyperarameter [fltrace only]
-        "datasource": "canneal",  # Global
+        "train_on_trace": "2train_1test", # Global hyperarameter [fltrace only]
+        "datasource": "fluidanimate",  # Global
+        "subsample": 1/5, # Training hyperparameter
         "objdump_path": OBJDUMP_PATH,  # Global hyperparameter [fltrace only]
         "model_folder": "models",  # Global
         "preload": "latest",  # Global
@@ -133,7 +133,7 @@ def get_config():
     else:
         assert config["trace_type"] == "fltrace"
         assert "raw" in DATA_PATH
-        assert config["train_on_trace"] in ["one_smallest","all"] # TODO change
+        assert config["train_on_trace"] in ["one_smallest","2train_1test"]
         for item in Path(DATA_PATH).iterdir():
             if item.is_dir() and item.name.startswith(config["datasource"]):
                 # This is our dir
@@ -142,9 +142,12 @@ def get_config():
                     dir_of_interest = sorted(item.glob('*'),key=lambda p: int(p.name.split('_')[-1]))[0]
                     config["data_path"] = dir_of_interest.absolute().as_posix()
                 else:
-                    raise NotImplementedError
+                    assert train_type == "2train_1test"
+                    config["data_path"] = [dir_.absolute().as_posix() for dir_ in sorted(item.glob('*'),key=lambda p: int(p.name.split('_')[-1]))[-3:]]
+                    assert len(config["data_path"]) == 3
 
-    model_hash_features = ["attention_model", "past_window", "k_predictions", "input_features",
+
+    model_hash_features = ["attention_model","train_on_trace", "past_window", "k_predictions", "input_features",
                            "embedding_technique","base_tokenizer","page_masked"]
 
     def parse_mhf(feature_name):

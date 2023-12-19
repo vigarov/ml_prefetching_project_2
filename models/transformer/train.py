@@ -392,6 +392,7 @@ def get_tokenizers(config) -> ((st.ConcatTokenizer | list[st.TokenizerWrapper]),
 
 def get_ds(config, generator) -> (
         DataLoader, DataLoader, (st.ConcatTokenizer | list[st.TokenizerWrapper]), st.TokenizerWrapper):
+    valid_df = None
     # It only has the train split, so we divide it overselves
     if "processed" in config["data_path"]:
         df_raw = read_csv(config["data_path"])
@@ -402,27 +403,54 @@ def get_ds(config, generator) -> (
                              save=None)  # load_dataset(f"{config['datasource']}", f"{config['lang_src']}-{config['lang_tgt']}", split='train')
         else:
             assert trace_type == "fltrace"
-            df_raw = process_fltrace(config["data_path"],config["objdump_path"],config["past_window"], config["k_predictions"],config["page_masked"],config["code_window"],save=None)
+            train_type = config["train_on_trace"]
+            if train_type == "2train_1test":
+                df_files_list = config["data_path"]
+                assert type(df_files_list) == list and len(df_files_list) == 3
+                df_raw = process_fltrace([df_files_list[0],df_files_list[-1]],config["objdump_path"],config["past_window"], config["k_predictions"],config["page_masked"],config["code_window"],multiple=True,save=None)
+                valid_df = process_fltrace(df_files_list[1],config["objdump_path"],config["past_window"], config["k_predictions"],config["page_masked"],config["code_window"],multiple=False,save=None)
+            else:
+                df_raw = process_fltrace(config["data_path"], config["objdump_path"], config["past_window"],
+                                         config["k_predictions"], config["page_masked"], config["code_window"],
+                                         save=None)
     df_raw = df_raw.astype({col: str for col in df_raw.columns if df_raw[col].dtype == "int64"})
+    if valid_df is not None:
+        valid_df = valid_df.astype({col: str for col in valid_df.columns if valid_df[col].dtype == "int64"})
+
+
     print("loaded data")
     # Build tokenizers
     src_tokenizer, tgt_tokenizer = get_tokenizers(config)
+    if valid_df is None:
+        train_tensor_size = int(config["train_test_split"] * len(df_raw))
+        indices = torch.arange(
+            len(df_raw))  # torch.randperm(len(df_raw), generator=generator)  # TODO think about overlapping pfault windows
 
-    train_tensor_size = int(config["train_test_split"] * len(df_raw))
-    indices = torch.arange(
-        len(df_raw))  # torch.randperm(len(df_raw), generator=generator)  # TODO think about overlapping pfault windows
-
-    subsample_rate = config["subsample"]
-    train_ds = PageFaultDataset(config, df_raw, indices[:train_tensor_size],
-                                src_tokenizer,
-                                tgt_tokenizer,
-                                sample_percentage=subsample_rate
-                                )
-    val_ds = PageFaultDataset(config, df_raw, indices[train_tensor_size:],
-                              src_tokenizer,
-                              tgt_tokenizer,
-                              sample_percentage=subsample_rate
-                              )
+        subsample_rate = config["subsample"]
+        train_ds = PageFaultDataset(config, df_raw, indices[:train_tensor_size],
+                                    src_tokenizer,
+                                    tgt_tokenizer,
+                                    sample_percentage=subsample_rate
+                                    )
+        val_ds = PageFaultDataset(config, df_raw, indices[train_tensor_size:],
+                                  src_tokenizer,
+                                  tgt_tokenizer,
+                                  sample_percentage=subsample_rate
+                                  )
+    else:
+        subsample_rate = config["subsample"]
+        indices_train = list(range(len(df_raw)))
+        train_ds = PageFaultDataset(config, df_raw, indices_train,
+                                    src_tokenizer,
+                                    tgt_tokenizer,
+                                    sample_percentage=subsample_rate
+                                    )
+        indices_test = list(range(len(valid_df)))
+        val_ds = PageFaultDataset(config, df_raw, indices_test,
+                                  src_tokenizer,
+                                  tgt_tokenizer,
+                                  sample_percentage=subsample_rate
+                                  )
 
     train_dataloader = DataLoader(train_ds, batch_size=config['batch_size'], shuffle=True)
     val_dataloader = DataLoader(val_ds, batch_size=1, shuffle=True)
@@ -503,7 +531,7 @@ def train_model(config,mass_training=False):
     # Tensorboard
     writer = SummaryWriter(config['experiment_folder'])
 
-    optimizer = torch.optim.Adam(model.parameters(), lr=config['lr'], eps=1e-9)
+    optimizer = torch.optim.AdamW(model.parameters(), lr=config['lr'], eps=1e-6,amsgrad=True)
 
     # If the user specified a model to preload before training, load it
     initial_epoch = 0
@@ -549,7 +577,7 @@ def train_model(config,mass_training=False):
     output_pad_id = tokenizer_tgt.token_to_id(config["pad_token"])
     assert input_pad_id == output_pad_id
 
-    loss_fn = nn.CrossEntropyLoss(ignore_index=output_pad_id,
+    ce_loss = nn.CrossEntropyLoss(ignore_index=output_pad_id,
                                   label_smoothing=0.1).to(device)
 
     for epoch in range(initial_epoch, config['num_epochs']):
@@ -575,7 +603,7 @@ def train_model(config,mass_training=False):
             label = batch['label'].to(device)  # (B, O')
 
             # Compute the loss using a simple cross entropy
-            loss = loss_fn(proj_output.view(-1, tokenizer_tgt.get_vocab_size()), label.view(-1))
+            loss = ce_loss(proj_output.view(-1, tokenizer_tgt.get_vocab_size()), label.view(-1))
             batch_iterator.set_postfix({"loss": f"{loss.item():6.3f}"})
 
             # Log the loss

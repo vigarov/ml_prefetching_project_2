@@ -1,4 +1,5 @@
 import json5
+import pandas as pd
 from pandas import DataFrame, read_csv
 from pathlib import Path
 import ast
@@ -379,25 +380,17 @@ def preprocess_fltrace(path_faults, path_procmap,objdump_dir,code_window:tuple[i
         return df
 
 
-def process_fltrace(preprocessed_file_or_dir :str, objdump_dir: str, source_window:int, pred_window:int, page_mask:bool, code_window:tuple[int,int] = (0, 3), save: str | None = None):
+def process_fltrace(preprocessed_file_or_dir :str|list, objdump_dir: str, source_window:int, pred_window:int, page_mask:bool, code_window:tuple[int,int] = (1, 2), multiple:bool = False ,save: str | None = None):
     # page_mask is technically useless for us as address off fltrace already come as pages, but still included just to make sure
-    p = Path(preprocessed_file_or_dir)
-    assert p.exists()
-    if p.is_file():
-        assert p.suffix == ".csv" and "prepro" in p.absolute().as_posix()
-        df = read_csv(preprocessed_file_or_dir)
+    if not multiple:
+        df = get_one_df(code_window, objdump_dir, preprocessed_file_or_dir)
+        df = build_history(df, page_mask, pred_window, source_window, address_base=16)
     else:
-        assert p.is_dir()
-        fault_file,procmap_file = "",""
-        for file in p.glob('*'):
-            if "data-faults" in file.name:
-                fault_file = file.absolute().as_posix()
-            elif "procmaps" in file.name:
-                procmap_file = file.absolute().as_posix()
-        assert fault_file!= '' and procmap_file != ''
-        df = preprocess_fltrace(fault_file,procmap_file,objdump_dir,code_window, save=None)
-
-    df = build_history(df, page_mask, pred_window, source_window,address_base=16)
+        assert type(preprocessed_file_or_dir) == list
+        all_dfs = []
+        for df_file in preprocessed_file_or_dir:
+            all_dfs.append(build_history(get_one_df(code_window,objdump_dir,df_file), page_mask, pred_window, source_window, address_base=16))
+        df = pd.concat(all_dfs,ignore_index=True)
 
     df["ips"] = df["ips"].swifter.apply(lambda ip_str: ip_str.replace('|',' '))
 
@@ -406,6 +399,25 @@ def process_fltrace(preprocessed_file_or_dir :str, objdump_dir: str, source_wind
     else:
         return df
 
+
+def get_one_df(code_window, objdump_dir, preprocessed_file_or_dir):
+    assert type(preprocessed_file_or_dir) == str
+    p = Path(preprocessed_file_or_dir)
+    assert p.exists()
+    if p.is_file():
+        assert p.suffix == ".csv" and "prepro" in p.absolute().as_posix()
+        df = read_csv(preprocessed_file_or_dir)
+    else:
+        assert p.is_dir()
+        fault_file, procmap_file = "", ""
+        for file in p.glob('*'):
+            if "data-faults" in file.name:
+                fault_file = file.absolute().as_posix()
+            elif "procmaps" in file.name:
+                procmap_file = file.absolute().as_posix()
+        assert fault_file != '' and procmap_file != ''
+        df = preprocess_fltrace(fault_file, procmap_file, objdump_dir, code_window, save=None)
+    return df
 
 
 BPFTRACE = False
