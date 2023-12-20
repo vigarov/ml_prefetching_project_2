@@ -391,13 +391,16 @@ def train_model(model):
                 encoder_output = model.encode(encoder_input, encoder_mask)  # (B, I, D) todo maybe add encoder mask
                 decoder_output = model.decode(encoder_output, encoder_mask, decoder_input, decoder_mask)  # (B, O', D)
                 output = model.project(decoder_output)  # (B, O', D)
+                loss = loss_fn(output.view(-1, tokenizer_tgt.get_vocab_size()), label.view(-1))
             else:
-                output = model(input_ids=encoder_input)[0]  # (B, O', D)
+                out = model(input_ids=encoder_input, labels=label)  # (B, O', D)
+                loss = out.loss
+                output = out.logits
             # Compare the output with the label
 
             # Compute the loss using a simple cross entropy
 
-            loss = loss_fn(output.view(-1, tokenizer_tgt.get_vocab_size()), label.view(-1))
+
             batch_iterator.set_postfix({"loss": f"{loss.item():6.3f}"})
 
             # Log the loss
@@ -410,9 +413,6 @@ def train_model(model):
             # Update the weights
             optimizer.step()
             optimizer.zero_grad(set_to_none=True)
-            run_validation(model, config, val_dataloader, tokenizer_tgt, config["start_stop_generating_tokens"],
-                           config["output_features"][0].max_len,
-                           device, lambda msg: batch_iterator.write(msg), global_step, writer)
 
             global_step += 1
         # Save the model at the end of every epoch
