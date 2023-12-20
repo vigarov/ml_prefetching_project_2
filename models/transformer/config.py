@@ -1,6 +1,7 @@
 from pathlib import Path
 from dataclasses import dataclass
 import re
+import torch
 
 DATA_PATH = "data/raw/fltrace_out/"
 OBJDUMP_PATH = "data/objdumps/"
@@ -60,9 +61,7 @@ class TransformerModelParams:
     H: int = 4  # Num Attention heads per Transformer layer
     dropout: float = 0.1
     d_ff: int = 1028
-import torch
 
-DATASET_PATH = "/home/garvalov/ml_prefetching_project_2/data/canneal_v1.csv"  # change depending on which machine is running train.py
 
 @dataclass
 class MetaTransformerParams:
