@@ -53,7 +53,7 @@ def greedy_decode(model, config,
 
         return decoder_input.squeeze(0)
     else:
-        return model.custom_generate(source_data, max_new_tokens=max_len - len(source_data), bos_token_id=start_idx,
+        return model.custom_generate(source_data, max_new_tokens=max_len, bos_token_id=start_idx,
                                      eos_token_id=end_idx, parallel_compute_prompt=False, do_sample=True)
 
 
@@ -395,7 +395,7 @@ def train_model(model):
 
             # Compute the loss using a simple cross entropy
 
-            loss = loss_fn(output.view(-1, tokenizer_tgt.get_vocab_size()), decoder_input.view(-1))
+            loss = loss_fn(output.view(-1, tokenizer_tgt.get_vocab_size()), label.view(-1))
             batch_iterator.set_postfix({"loss": f"{loss.item():6.3f}"})
 
             # Log the loss
