@@ -487,6 +487,12 @@ def get_model(config, inp_tokenizer: st.ConcatTokenizer | list[st.TokenizerWrapp
 
 
 def train_model(config,mass_training=False):
+    """
+    Train the model, with the parameters given in config
+    :param config: the configuration (see config.py)
+    :param mass_training: if True, will delete the oldest weight files if there are more than max_weight_save_history
+    :return: Nothing
+    """
     # Define the device
     device = "cuda" if torch.cuda.is_available() else "mps" if torch.has_mps or torch.backends.mps.is_available() else "cpu"
     print("Using device:", device)
@@ -634,6 +640,10 @@ def train_model(config,mass_training=False):
         past_save_files.append(model_filename)
 
 def multi_config_train():
+    """
+    Bulk train for multiple configuration values
+    :return: Nothing
+    """
     configs = get_all_configs()
     for c in configs:
         train_model(c)

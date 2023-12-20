@@ -13,7 +13,15 @@ from transformer.trained_tokenizers.special_tokenizers import SimpleTokenIdList
 
 
 class Inferer:
+    """
+    Class used to infer the output of a model
+    """
     def __init__(self, config, model=None, device=None):
+        """
+        :param config: the configuration (see config.py)
+        :param model: the model to use for inference (if None, will use the configuration)
+        :param device: the device to use for inference (if None, will use the configuration)
+        """
         src_tokenizer, tgt_tokenizer = get_tokenizers(config)
         self.src_tokenizer = src_tokenizer
         self.tgt_tokenizer = tgt_tokenizer
@@ -25,6 +33,13 @@ class Inferer:
         self.beam_size = config["beam_size"] #FIXME not implemented yet
 
     def infer(self, data, max_len, output_file=None):
+        """
+        Infer the output of the model for the given data and print the result to stdout (and to a file if specified)
+        :param data: the data to infer from
+        :param max_len: the maximum length of the output
+        :param output_file: the file to write the output to (if None, will only print to stdout)
+        :return: None
+        """
         self.model.eval()
         source_texts = []
         inferred = []
@@ -61,7 +76,7 @@ class Inferer:
             if self.decode_algorithm == "beam":
                 model_out = beam_search_decode(self.model, self.beam_size, encoder_input_list, encoder_mask,
                                                self.tgt_tokenizer, config["start_stop_generating_tokens"],
-                                               max_len, device)
+                                               max_len, self.device)
             else:
                 assert self.decode_algorithm == "greedy"
                 model_out = greedy_decode(self.model, encoder_input_list, encoder_mask, self.tgt_tokenizer, config["start_stop_generating_tokens"],
