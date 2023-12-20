@@ -28,6 +28,7 @@ class Inferer:
         self.config = config
         self.device = get_device() if device is None else device
         path_weights = latest_weights_file_path(config)
+        print(path_weights)
         self.model = self.load_model(path_weights) if model is None else model
         self.decode_algorithm = config["decode_algorithm"]
         self.beam_size = config["beam_size"] #FIXME not implemented yet
