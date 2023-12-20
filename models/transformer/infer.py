@@ -9,7 +9,7 @@ from models.transformer.dataset import causal_mask, PageFaultDataset
 from tokenizers import Tokenizer
 
 from models.transformer.train import get_model, get_tokenizers, greedy_decode, beam_search_decode
-from transformer.trained_tokenizers.special_tokenizers import SimpleTokenIdList
+from models.transformer.trained_tokenizers.special_tokenizers import SimpleTokenIdList
 
 
 class Inferer:

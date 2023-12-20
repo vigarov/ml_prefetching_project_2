@@ -2,7 +2,7 @@ import torch
 import torch.nn as nn
 import math
 
-from config import MetaTransformerParams
+from models.transformer.config import MetaTransformerParams
 
 class LayerNormalization(nn.Module):
 

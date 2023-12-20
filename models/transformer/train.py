@@ -1,12 +1,12 @@
-from trained_tokenizers.special_tokenizers import SimpleTokenIdList
+from models.transformer.trained_tokenizers.special_tokenizers import SimpleTokenIdList
 
-from model import build_model
-from dataset import PageFaultDataset, causal_mask
-from config import *
+from models.transformer.model import build_model
+from models.transformer.dataset import PageFaultDataset, causal_mask
+from models.transformer.config import *
 import torch
 import torch.nn as nn
 from torch.utils.data import DataLoader, random_split
-from data_parser import *
+from models.transformer.data_parser import *
 import warnings
 from tqdm import tqdm
 import os
@@ -16,7 +16,7 @@ from pandas import read_csv
 from tokenizers import Tokenizer
 
 
-from trained_tokenizers import special_tokenizers as st
+from models.transformer.trained_tokenizers import special_tokenizers as st
 
 import torchmetrics
 from torch.utils.tensorboard import SummaryWriter
