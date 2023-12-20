@@ -3,10 +3,9 @@
 
 from pandas import *
 
-from transformer.config import get_config
-from transformer.dataset import PageFaultDataset
-from transformer.infer import Inferer
-from transformer.train import get_tokenizers
+from models.transformer.config import get_config
+from models.transformer.infer import Inferer
+from models.transformer.train import get_tokenizers
 
 trace_file = read_csv("data/processed/processed_canneal_v1.4.csv")
 
