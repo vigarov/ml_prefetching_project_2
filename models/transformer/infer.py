@@ -59,8 +59,8 @@ class Inferer:
             subsample_rate = config["subsample"]
             indices_train = list(range(len(data)))
             dataset = PageFaultDataset(config, data, indices_train,
-                                       self.tokenizer_src,
-                                       self.tokenizer_tgt,
+                                       self.src_tokenizer,
+                                       self.tgt_tokenizer,
                                        sample_percentage=subsample_rate
                                        )
 
