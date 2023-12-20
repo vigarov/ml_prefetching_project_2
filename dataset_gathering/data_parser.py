@@ -13,6 +13,9 @@ from bisect import bisect_left
 
 PAGE_SIZE = 4096
 
+"""
+Parses an objectdump-s output
+"""
 
 def get_page_address(addr:   int) -> int:
     return addr & ~(PAGE_SIZE - 1)
