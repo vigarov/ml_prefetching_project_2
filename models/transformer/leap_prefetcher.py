@@ -49,7 +49,7 @@ src_tokenizer, tgt_tokenizer = get_tokenizers(config)
 inferer = Inferer(config)
 while count + 32 < len(trace_file):
     deltaLeap = trace_file['prev_faults'][count: count + 32].tolist()
-    print(trace_file['prev_faults'][0][count: count + 32])
+    print(type(trace_file['prev_faults'][0][count: count + 32]))
     candidateOurs = inferer.infer({'prev_faults': trace_file['prev_faults'][0][count]}, 32)
     candidateLeap = findMajority(deltaLeap, 32)
     deltaLeap = trace_file[count+32]['y']
