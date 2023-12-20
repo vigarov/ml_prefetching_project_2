@@ -319,7 +319,6 @@ def get_tokenizers(config) -> ((st.ConcatTokenizer | list[st.TokenizerWrapper]),
             tokenizer = st.SimpleCustomVocabTokenizer(custom_vocab, SPECIAL_TOKENS, input_splitter=input_splitter)
         else:
             tokenizer_path = Path(tok_file_or_custom.format(primitive_feature_type))
-            print(tokenizer_path)
             assert tokenizer_path.exists() and tokenizer_path.suffix == ".json"
             tokenizer = Tokenizer.from_file(tokenizer_path.absolute().as_posix())
 
