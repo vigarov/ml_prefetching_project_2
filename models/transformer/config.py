@@ -29,7 +29,7 @@ FORCE_BYTE = True
 # max_len for prev_pfaults is at most "past_window" * 17 + "past_window"-1 = address_size_in_hex_digits + 1 ("0x") + [EOW] or (8+1=)9 if FORCE_BYTE
 #             bitmap is 16
 #             ip, 16, similar as prev_pfaults, but no array-> no mult
-#             ustack, don't know yet, use big value for now TODO
+#             ustack, 1600, empirically found
 #             regs, #regs*len_max_reg_value_in_chosen_base = 20 * (16 + 1 ("0x")) + (20-1) = 20 * (8+1) + 2 if FORCE_BYTE
 # prev_faults's lengths will be +2 because of SOS/EOS tokens
 # output +1 only since we either have SOS (decoder input) or EOS (decoder ground truth)
@@ -41,7 +41,7 @@ MAX_STACKTRACE_DEPTH = 32 # ?
 BPF_FEATURES = [Feature("prev_faults", "hex_address_list",PAST_WINDOW*(HEX_64_LEN+1) - 1+2),
                   Feature("flags", "bitmap",18),
                   Feature("ip", "hex_address",HEX_64_LEN+2),
-                  #Feature("ustack", "text",2048), # Commnent if not running on `gpu`, as you'll likely run OOM
+                  Feature("ustack", "text",1600), # Comment if not running on GPU server, as you'll likely run OOM
                   Feature("regs", "hex_number_list",20*(HEX_64_LEN+1)-1)]
 FL_FEATURES = [
     Feature("prev_faults", "hex_address_list",96),#PAST_WINDOW*(HEX_64_LEN+1) - 1+2),

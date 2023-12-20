@@ -261,7 +261,6 @@ class Transformer(nn.Module):
 
 # Returns either Transformer or RetNet
 def build_model(config, in_vocab_size: int | list[int], out_vocab_size: int, pos_in_len: int | list[int], pos_out_len: int):
-    # TODO: some things hereunder might be Transformer specific, and might need to be factorized when we implement RetNet
     model_pms = config["attention_model_params"]
     att_model = config["attention_model"]
 
@@ -329,7 +328,6 @@ def build_model(config, in_vocab_size: int | list[int], out_vocab_size: int, pos
     else:
         conf = RetNetConfig.RetNetConfig(vocab_size=in_vocab_size,
                                          decoder_embed_dim=model_pms.d_model,
-                                         decoder_retention_heads=model_pms.H, #TODO is it the same?
                                          dropout=model_pms.dropout)
         model = RetNetForCausalLM.RetNetForCausalLM(conf)
 

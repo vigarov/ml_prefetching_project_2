@@ -118,7 +118,7 @@ class PageFaultDataset(Dataset):
         # (--> progressively allow more of the input)
         decoder_mask = (decoder_input != self.pad_token_ids[1]).unsqueeze(0).int()  # size = (1,O')
         progressive_mask = causal_mask(decoder_input.size(0))  # size = (1, O', O')
-        decoder_mask = decoder_mask & progressive_mask  # size = (1, O') & (1, O', O') TODO = (1, O', O')  ?
+        decoder_mask = decoder_mask & progressive_mask  # size = (1, O') & (1, O', O')
 
 
         # Tokenize input (encoding), and return accordingly
@@ -149,7 +149,7 @@ class PageFaultDataset(Dataset):
             tokenized_input = tokenized_input_list
 
         # Resize for per Batch and per model step (c.f.: the decoder mask ; the encoder input will always stay the
-        # same while the decoder is progressively allowed through) # TODO not entirely sure of the second "per" here
+        # same while the decoder is progressively allowed through)
         encoder_mask = encoder_mask.unsqueeze(0).unsqueeze(0).int()  # size (1,1,I)
 
         # For logging purpose, we also return the actual data, as text

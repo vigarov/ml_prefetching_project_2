@@ -281,7 +281,6 @@ def get_tokenizers(config) -> ((st.ConcatTokenizer | list[st.TokenizerWrapper]),
                               sentence_like_wrap_mode: str | None = None) -> st.TokenizerWrapper:
         # Since '!' is not an allowed character in path, we use it as a flag to signal if we should prefer using a custom
         # vocab tokenizer for the features that support it
-        # TODO: if you want to refactor, passing along a bool flag in all the funcs is infinitely better, but couldn't be arsed to do it
         custom = "!" in tok_file_or_custom
         tok_file_or_custom = tok_file_or_custom.replace('!','')
 
@@ -370,7 +369,6 @@ def get_tokenizers(config) -> ((st.ConcatTokenizer | list[st.TokenizerWrapper]),
     individual_padders = emb_type in ["meta_transformer","embed_concat"]
     # Since '!' is not an allowed character in path, we use it as a flag to signal if we should prefer using a custom
     # vocab tokenizer for the features that support it
-    # TODO: if you want to refactor, passing along a bool flag in all the funcs is infinitely better, but couldn't be arsed to do it
     tok_file = ('!' if base_tokenizer == 'hextet' else '') + tok_file
     inp_ret_dict = get_feature_tokenizer_dict(tok_file, input_features, all_padders=individual_padders)
     if emb_type == "tok_concat":
@@ -424,7 +422,7 @@ def get_ds(config, generator) -> (
     if valid_df is None:
         train_tensor_size = int(config["train_test_split"] * len(df_raw))
         indices = torch.arange(
-            len(df_raw))  # torch.randperm(len(df_raw), generator=generator)  # TODO think about overlapping pfault windows
+            len(df_raw))  # torch.randperm(len(df_raw), generator=generator) think about overlapping pfault windows
 
         subsample_rate = config["subsample"]
         train_ds = PageFaultDataset(config, df_raw, indices[:train_tensor_size],
@@ -478,8 +476,6 @@ def get_model(config, inp_tokenizer: st.ConcatTokenizer | list[st.TokenizerWrapp
         assert emb_type in ["meta_transformer", "embed_concat"] and type(inp_tokenizer) == list
         src_vocab_size = [it.get_vocab_size() for it in inp_tokenizer]
         inp_seq_len = [int(feature.max_len) for feature in used_features]
-        # TODO: we might have to slightly adapt build_model for those two, which is why I am currently taking the tokenizers themselves as input
-        # TODO cont: This might however not be needed, maybe we can do with only the different sizes/lengths
 
 
     model = build_model(config, src_vocab_size, out_vocab_size, inp_seq_len, out_seq_len)
@@ -531,7 +527,7 @@ def train_model(config,mass_training=False):
         torch.save(generator.seed(), (gen_dir / SEED_FN).as_posix())
 
     train_dataloader, val_dataloader, tokenizer_src, tokenizer_tgt = get_ds(config, generator)
-    # Save generator TODO: useless to do here, save at weight save time iff generator impacts training
+    # Save generator
     torch.save(generator.get_state(), (gen_dir / STATE_FN).as_posix())
     model = get_model(config, tokenizer_src, tokenizer_tgt).to(device)
     # Tensorboard
@@ -550,8 +546,7 @@ def train_model(config,mass_training=False):
         else None
     if model_filename:
         assert was_currently_training
-        generator.set_state(
-            gen_state)  # TODO: I think we might not need that - past weight initialization, there is no randomness right? Incorrect for dropout? Incorrect for beam search?
+        generator.set_state(gen_state)
         print(f'Preloading model {model_filename}')
         state = torch.load(model_filename)
         model.load_state_dict(state['model_state_dict'])
