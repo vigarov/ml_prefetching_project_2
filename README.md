@@ -114,6 +114,15 @@ In the `get_config` function in `config.py`, we create the configuration, you ca
 * `meta_transformer_params`: the parameters of the meta transformer. Default: `MetaTransformerParams`
 * `page_masked`: for `bpftrace` only, convert map all accesses to a page. This is default behavior with `fltrace` #TODO VICTOR
 * `max_weight_save_history`: used when `mass_train == True` in training. Defines how many epochs we should save at most. Default: 3
+
+### Tokenizers
+
+In `models/trained_tokenizers/special_tokenizers.py`, we define generic classes of tokenizers, which are then trained on a specific vocabulary.
+We have three generic classes:
+* `SimpleCustomVocabTokenizer`
+* `TokenizerWrapper`
+* `ConcatTokenizer`
+Details can be found in the docstrings of the classes.
 ### Training
 
 To train the model on our dataset, simply run the `train.py` script, i.e.:

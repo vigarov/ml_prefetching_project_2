@@ -28,9 +28,18 @@ class Splitter:
         self.split_function = split_function  # function taking as argument str, returning list(str)
         self.replace_token = replace_token
 
-
 class SimpleCustomVocabTokenizer:
+    """
+    A simple tokenizer that uses a custom vocab.
+    Use encode to encode a string, decode to decode a list of ids.
+    """
     def __init__(self, vocab: list[str], special_tokens: list[str], input_splitter: Splitter):
+        """
+        :param vocab: vocabulary of the tokenizer (list of strings)
+        :param special_tokens: special tokens for the tokenizer, e.g BOS, EOS, PAD, UNK
+        :param input_splitter: splitter function to split the input strings
+        :return: a new simple tokenizer with the given vocab and special tokens
+        """
         self.full_vocab = special_tokens + vocab
         self.reverse_dict = {}
         for i, tok in enumerate(self.full_vocab):
@@ -39,15 +48,33 @@ class SimpleCustomVocabTokenizer:
         self.input_splitter = input_splitter
 
     def get_vocab_size(self) -> int:
+        """
+        :return: the size of the vocabulary
+        """
         return self.vocab_size
 
     def token_to_id(self, token_str: str) -> int:
+        """
+        Convert a token to its id
+        :param token_str: the token to convert
+        :return: the id of the token
+        """
         return self.reverse_dict[token_str]
 
     def id_to_token(self, id_: int) -> str:
+        """
+        Convert an id to its token
+        :param id_: the id to convert
+        :return: the token corresponding to the id
+        """
         return self.full_vocab[id_]
 
     def encode(self, str_to_encode: str) -> SimpleTokenIdList:
+        """
+        Encode a string, i.e. tokenize it, converting it to a list of tokens
+        :param str_to_encode: the string to encode
+        :return: the list of ids corresponding to the tokens
+        """
         all_e = self.input_splitter.split_function(str_to_encode)
         for e in all_e:
             if e not in self.reverse_dict:
@@ -57,9 +84,17 @@ class SimpleCustomVocabTokenizer:
         return SimpleTokenIdList(ids=[self.reverse_dict[element] for element in all_e])
 
     def decode(self, ids_list: list[int]) -> str:
+        """
+        Decode a list of ids, i.e. convert it to a string
+        :param ids_list: the list of ids to decode
+        :return: the decoded string corresponding to the list of ids
+        """
         return ''.join([self.full_vocab[id_] for id_ in ids_list])
 
     def get_vocab(self):
+        """
+        :return: the vocabulary of the tokenizer
+        """
         return self.full_vocab
 
 
@@ -70,11 +105,23 @@ class WrapParameters:
 
 
 class TokenizerWrapper:
-    # Important note: this wrapper only preserves the tokenizer's `decode(encode(x)) == x` propery iff the given
+    # Important note: this wrapper only preserves the tokenizer's `decode(encode(x)) == x` property iff the given
     # Splitter's replace_token corresponds to, when added, to the "reverse" of the split_function
     # (e.g.: if split_function == split() and replace_token = " ")
+    """
+    A wrapper around a tokenizer, that can add special tokens, padding, and modified splitting to an already existent tokenizer.
+    """
     def __init__(self, underlying_tokenizer : tokenizers.Tokenizer | SimpleCustomVocabTokenizer, num_special_tokens: int, pad_length: int, splitter: Splitter = None,
                  pad_token: str | None = None, wrap_parameters: WrapParameters | None = None):
+        """
+        :param underlying_tokenizer: the tokenizer to wrap around
+        :param num_special_tokens: the number of special tokens of the new tokenizer
+        :param pad_length: the pad length of the new tokenizer
+        :param splitter: the splitter to use for the new tokenizer
+        :param pad_token: the pad token to use for the new tokenizer
+        :param wrap_parameters: the wrap parameters to use for the new tokenizer (see :class:`WrapParameters`)
+        :return: a new tokenizer wrapping around the given tokenizer
+        """
         self.num_prepended_extra_special_tokens = 0
         self.wrap_parameters = wrap_parameters
         if wrap_parameters is not None:
@@ -98,9 +145,17 @@ class TokenizerWrapper:
         self.pad_length = pad_length
 
     def get_vocab_size(self) -> int:
+        """
+        :return: the size of the vocabulary
+        """
         return self.vocab_size
 
     def token_to_id(self, token_str: str) -> int:
+        """
+        Convert a token to its id
+        :param token_str: the token to convert
+        :return: the id of the token
+        """
         if self.pad_token is not None and token_str == self.pad_token:
             return 0
         if self.wrap_parameters is not None:
@@ -122,6 +177,11 @@ class TokenizerWrapper:
         return self.underlying_tokenizer.token_to_id(token_str)
 
     def id_to_token(self, id_: int) -> str:
+        """
+        Convert an id to its token
+        :param id_: the id to convert
+        :return: the token corresponding to the id
+        """
         if self.pad_token is not None:
             if id_ == 0:
                 return self.pad_token
@@ -142,6 +202,11 @@ class TokenizerWrapper:
         return self.underlying_tokenizer.id_to_token(id_)
 
     def encode(self, str_to_encode: str) -> (SimpleTokenIdList | tuple[SimpleTokenIdList, int]):
+        """
+        Encode a string, i.e. tokenize it, converting it to a list of tokens
+        :param str_to_encode: the string to encode
+        :return: the list of ids corresponding to the tokens
+        """
         ret = SimpleTokenIdList()
         if self.splitter is not None:
             elemnts_to_encode = self.splitter.split_function(str_to_encode)
@@ -190,6 +255,11 @@ class TokenizerWrapper:
             return ret
 
     def decode(self, ids_list: SimpleTokenIdList) -> str:
+        """
+        Decode a list of ids, i.e. convert it to a string
+        :param ids_list: the list of ids to decode
+        :return: the decoded string corresponding to the list of ids
+        """
         # When decoding, the only special thing we need to do for padding is ignore all `pad` tokens
         to_np = np.array(ids_list.ids)
         if self.pad_token is not None:
@@ -220,21 +290,41 @@ class TokenizerWrapper:
         return self.underlying_tokenizer.decode(ids_list.ids)
 
     def get_pad_length(self):
+        """
+        :return: the pad length of the tokenizer
+        """
         return self.pad_length
 
     def wraps(self):
+        """
+        :return: whether tokenizer wraps SOS and EOS tokens around the encoded sequence
+        """
         return self.wrap_parameters is not None
 
     def returns_right_wrap_index(self):
+        """
+        :return: whether the tokenizer doesn't insert EOS but returns the index where it would've been inserted
+        """
         assert self.wraps()
         return self.wrap_parameters.on_encode_wrap_type == "no_insert_get_right_index"
 
     def has_already_padded(self):
+        """
+        :return: whether the tokenizer already has padding
+        """
         return self.pad_token is not None
 
 
 class ConcatTokenizer:
+    """
+    A tokenizer that concatenates the results of multiple tokenizers (wrappers). See :class:`TokenizerWrapper` for more info.
+    """
     def __init__(self, feature_separator_token: str | None, pad_token: str, tokenizers: list[TokenizerWrapper]):
+        """
+        :param feature_separator_token: the token to use to separate the features
+        :param pad_token: the pad token to use
+        :param tokenizers: list of tokenizers to concatenate
+        """
         self.pad_token, self.pt_id = pad_token, 0
         self.feature_separator_token, self.fst_id = feature_separator_token, (1 if feature_separator_token is not None else None)
         self.tokenizers = list(tokenizers)
@@ -247,9 +337,17 @@ class ConcatTokenizer:
             assert not tokenizer.wraps() or not tokenizer.returns_right_wrap_index()
 
     def get_vocab_size(self) -> int:
+        """
+        :return: the size of the vocabulary
+        """
         return self.vocab_size
 
     def token_to_id(self, token_str: str) -> list[int]:
+        """
+        Convert a token to its id
+        :param token_str: the token to convert
+        :return: the id of the token
+        """
         # Returns a list of all possible ids, as a token might be present in > 1 (sub) tokenizer
         if token_str == self.pad_token:
             return [self.pt_id]
@@ -263,6 +361,11 @@ class ConcatTokenizer:
         return all_possible_ids
 
     def id_to_token(self, id_: int) -> str:
+        """
+        Convert an id to its token
+        :param id_: the id to convert
+        :return: the token corresponding to the id
+        """
         assert id_ >= 0
         if id_ == 0:
             return self.pad_token
@@ -275,6 +378,11 @@ class ConcatTokenizer:
             raise LookupError
 
     def encode(self, features_to_encode: list[str], pad=True) -> SimpleTokenIdList:
+        """
+        Encode a string, i.e. tokenize it, converting it to a list of tokens
+        :param str_to_encode: the string to encode
+        :return: the list of ids corresponding to the tokens
+        """
         assert len(features_to_encode) == len(self.tokenizers)
         ret = SimpleTokenIdList()
         for i, feature_value in enumerate(features_to_encode):
@@ -293,6 +401,11 @@ class ConcatTokenizer:
         return ret
 
     def decode(self, ids_list: SimpleTokenIdList) -> list[str]:
+        """
+        Decode a list of ids, i.e. convert it to a string
+        :param ids_list: the list of ids to decode
+        :return: the decoded string corresponding to the list of ids
+        """
         # Will never be used in our model, as for the output (which is the only place we'll need `decode()`), we only
         # have one feature --> will not be wrapped around ConcatTokenizer
         if not DEBUG_TOKENIZERS:
