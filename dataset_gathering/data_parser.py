@@ -14,7 +14,7 @@ from bisect import bisect_left
 PAGE_SIZE = 4096
 
 
-def get_page_address(addr: int) -> int:
+def get_page_address(addr:   int) -> int:
     return addr & ~(PAGE_SIZE - 1)
 
 
