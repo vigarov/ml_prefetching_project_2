@@ -5,11 +5,22 @@ from trained_tokenizers import special_tokenizers as st
 
 
 class PageFaultDataset(Dataset):
+    """
+    Represents a dataset of page fault logs
+    """
     def __init__(self, config, df, indices_split,
                  input_tokenizer: st.ConcatTokenizer | list[st.TokenizerWrapper] | st.TokenizerWrapper,
                  output_tokenizer: st.TokenizerWrapper,
                  sample_percentage:float=1.00  # lower than 1 if you want to subsample
                  ):
+        """
+        :param config: configuration (see config.py)
+        :param df: the dataframe containing the data
+        :param indices_split: the indices of the data in the dataframe to use for this dataset
+        :param input_tokenizer: the tokenizer to use for the input (see trained_tokenizers)
+        :param output_tokenizer: the tokenizer to use for the output (see trained_tokenizers)
+        :param sample_percentage: the percentage of the data to use (1.0 = 100%), lower than 1 for subsampling
+        """
         self.input_features = config["input_features"]
         self.output_features = config["output_features"]
         self.input_view = df[[feature.name for feature in self.input_features]].iloc[indices_split]
@@ -39,9 +50,25 @@ class PageFaultDataset(Dataset):
         self.start_stop_generating_tokens = config["start_stop_generating_tokens"]
 
     def __len__(self):
+        """
+        :return: the number of elements in the dataset
+        """
         return self.len
 
     def __getitem__(self, index) -> dict:
+        """
+        :param index: the index of the element to get
+        :return: a dictionary containing the data for the given index with the following structure:
+        {
+        "encoder_input": tokenized input string, size = [(I)] with Concat embedding or [(I')] with Meta or OneText embedding
+        "encoder_mask": mask for the encoder input, size = (1,1,I) with Concat embedding or (1,1,I) with Meta or OneText embedding
+        "decoder_input": tokenized output string, size = (O')
+        "decoder_mask": mask for the decoder input, size = (1,O',O')
+        "label": ground truth, size = (O')
+        "src_text": input string
+        "tgt_text": output string
+        }
+        """
         if torch.is_tensor(index):
             index = index.toList()
         if type(index) == list:
@@ -142,5 +169,10 @@ class PageFaultDataset(Dataset):
 
 
 def causal_mask(size):
+    """
+    Returns a causal mask that prevents the decoder from looking forward
+    :param size: the size of the mask
+    :return: the mask
+    """
     mask = torch.triu(torch.ones((1, size, size)), diagonal=1).type(torch.int)
     return mask == 0
