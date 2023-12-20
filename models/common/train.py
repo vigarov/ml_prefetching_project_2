@@ -16,9 +16,6 @@ from models.common.dataset import PageFaultDataset, causal_mask
 from models.common.trained_tokenizers import special_tokenizers as st
 from models.common.trained_tokenizers.special_tokenizers import SimpleTokenIdList
 
-import os
-os.environ["CUDA_LAUNCH_BLOCKING"] = "1"
-
 def greedy_decode(model, config,
                   source_data, source_mask,
                   tokenizer_tgt: st.TokenizerWrapper, start_stop_tokens: list,
