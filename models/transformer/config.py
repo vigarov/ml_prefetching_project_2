@@ -37,11 +37,11 @@ HEX_64_LEN = (8 if FORCE_BYTE else 16) + 1  # 1 for "0x"
 
 MAX_STACKTRACE_DEPTH = 32 # ?
 
-BPF_FEATURES = [Feature("prev_faults", "hex_address_list",PAST_WINDOW*(HEX_64_LEN+1) - 1+2)]
-                  # Feature("flags", "bitmap",18),
-                  # Feature("ip", "hex_address",HEX_64_LEN+2),
-                  # #Feature("ustack", "text",2048), # Commnent if not running on `gpu`, as you'll likely run OOM
-                  # Feature("regs", "hex_number_list",20*(HEX_64_LEN+1)-1)]
+BPF_FEATURES = [Feature("prev_faults", "hex_address_list",PAST_WINDOW*(HEX_64_LEN+1) - 1+2),
+                  Feature("flags", "bitmap",18),
+                  Feature("ip", "hex_address",HEX_64_LEN+2),
+                  #Feature("ustack", "text",2048), # Commnent if not running on `gpu`, as you'll likely run OOM
+                  Feature("regs", "hex_number_list",20*(HEX_64_LEN+1)-1)]
 FL_FEATURES = [
     Feature("prev_faults", "hex_address_list",96),#PAST_WINDOW*(HEX_64_LEN+1) - 1+2),
     Feature("rW", "bit",2),
