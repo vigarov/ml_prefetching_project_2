@@ -112,7 +112,7 @@ In the `get_config` function in `config.py`, we create the configuration, you ca
 * `base_tokenizer`: the base tokenizer to use. Default: `hextet`, choose with `bpe`, `text`. See tokenizers section.
 * `embedding_technique`: the embedding technique used on the tokens. See embeddings. Default: `tok_concat`, choose with `onetext`, `meta_transformer` and `embed_concat`
 * `meta_transformer_params`: the parameters of the meta transformer. Default: `MetaTransformerParams`
-* `page_masked`: for `bpftrace` only, convert map all accesses to a page. This is default behavior with `fltrace` #TODO VICTOR
+* `page_masked`: for `bpftrace` only, map all address accesses to their page numbers.
 * `max_weight_save_history`: used when `mass_train == True` in training. Defines how many epochs we should save at most. Default: 3
 
 ### Tokenizers
