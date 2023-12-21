@@ -4,7 +4,7 @@ In this project created for EPFL's CS-433: Machine Learning, we explore the use 
 
 ## Installation
 
-You can find the requirements in the `requirements.txt` file. To install them, run the following command:
+You can find the requirements in the `requirements.txt` file under `models/transformer/`. To install them, run the following command:
 
 ```bash
 pip install -r requirements.txt
@@ -129,6 +129,7 @@ To train the model on our dataset, simply run the `train.py` script, i.e.:
 ```bash
 python train.py
 ```
+Important! this assumes you have already copied the [dataset](https://go.epfl.ch/ml_prefetching_dataset), in the right folders, as specified above.
 
 You can tweak the parameters of the model in the `config.py` file.
 
